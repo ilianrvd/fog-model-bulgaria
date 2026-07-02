@@ -1,0 +1,609 @@
+"""
+fog_model.py
+============
+Едномерен (вертикален) модел за прогнозиране на мъгла и видимост
+за летище София (LBSF), базиран на физиката на PAFOG.
+
+Автор: ДП РВД / Aviation MET
+Версия: 1.0
+
+Физически процеси:
+  - Радиационно охлаждане (дългова радиация по опростена схема)
+  - Турбулентна дифузия (TKE-based K-theory)
+  - Кондензация/изпарение (bulk microphysics)
+  - Утаяване на капките (stokes settling)
+  - Приземно-слоева параметризация (Louis 1979)
+
+Вход:
+  - WRF NetCDF профил (T, QVAPOR, U, V, P, PH, PHB)
+  - METAR наблюдение за инициализация
+
+Изход:
+  - 12-часова прогноза: LWC, видимост, RH, T по нива
+  - CSV и визуализация
+"""
+
+import numpy as np
+from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
+import warnings
+warnings.filterwarnings("ignore")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Физически константи
+# ──────────────────────────────────────────────────────────────────────────────
+Rd    = 287.05    # J/(kg·K)  - газова константа на сух въздух
+Rv    = 461.5     # J/(kg·K)  - газова константа на водни пари
+cp    = 1005.0    # J/(kg·K)  - специфичен топлинен капацитет
+Lv    = 2.5e6     # J/kg      - латентна топлина на кондензацията
+g     = 9.81      # m/s²
+kappa = Rd / cp   # ≈ 0.2857
+sigma = 5.67e-8   # W/(m²·K⁴) - Stefan-Boltzmann
+rho_w = 1000.0    # kg/m³     - плътност на водата
+eps   = Rv / Rd   # ≈ 1.608  (обърнато за формули)
+eps_r = Rd / Rv   # ≈ 0.622
+
+# Параметри на микрофизиката
+N_d       = 100e6   # m⁻³  - брой концентрация на CCN
+r_eff_min = 2e-6    # m    - минимален ефективен радиус
+r_eff_max = 20e-6   # m    - максимален ефективен радиус
+beta_vis  = 144.7   # коефициент видимост-LWC (Kunkel 1984)
+
+# Радиационни параметри
+emiss_air = 0.85    # средна излъчвателна способност на въздуха
+emiss_fog = 1.0     # мъглата е почти черно тяло в IR
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Помощни термодинамични функции
+# ──────────────────────────────────────────────────────────────────────────────
+
+def sat_vapor_pressure(T_K: np.ndarray) -> np.ndarray:
+    """Наситено парно налягане [Pa] по формулата на Buck (1981)."""
+    T_C = T_K - 273.15
+    es = 611.2 * np.exp(17.67 * T_C / (T_C + 243.5))
+    return es
+
+
+def sat_mixing_ratio(T_K: np.ndarray, p_Pa: np.ndarray) -> np.ndarray:
+    """Наситено смесително съотношение [kg/kg]."""
+    es = sat_vapor_pressure(T_K)
+    qs = eps_r * es / (p_Pa - es)
+    return np.maximum(qs, 0.0)
+
+
+def relative_humidity(qv: np.ndarray, T_K: np.ndarray, p_Pa: np.ndarray) -> np.ndarray:
+    """Относителна влажност [0..1]."""
+    qs = sat_mixing_ratio(T_K, p_Pa)
+    return np.clip(qv / (qs + 1e-12), 0.0, 1.5)
+
+
+def dew_point_from_rh(T_K: float, rh: float) -> float:
+    """Точка на росата [K] по Магнус."""
+    T_C = T_K - 273.15
+    a, b = 17.27, 237.3
+    gamma = (a * T_C) / (b + T_C) + np.log(max(rh, 0.01))
+    Td_C = b * gamma / (a - gamma)
+    return Td_C + 273.15
+
+
+def theta_to_T(theta: np.ndarray, p_Pa: np.ndarray, p0: float = 1e5) -> np.ndarray:
+    """Потенциална → абсолютна температура."""
+    return theta * (p_Pa / p0) ** kappa
+
+
+def T_to_theta(T_K: np.ndarray, p_Pa: np.ndarray, p0: float = 1e5) -> np.ndarray:
+    """Абсолютна → потенциална температура."""
+    return T_K * (p0 / p_Pa) ** kappa
+
+
+def virtual_potential_temp(theta: np.ndarray, qv: np.ndarray, ql: np.ndarray) -> np.ndarray:
+    """Виртуална потенциална температура."""
+    return theta * (1.0 + (Rv / Rd) * qv - ql)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Видимост от LWC
+# ──────────────────────────────────────────────────────────────────────────────
+
+def lwc_to_visibility(lwc: np.ndarray) -> np.ndarray:
+    """
+    Видимост [m] от LWC [kg/m³] по Kunkel (1984):
+      VIS = beta * LWC^(-0.65)
+    При LWC < праг → "ясно"
+    """
+    lwc_g = lwc * 1000.0  # → g/m³
+    vis = np.where(
+        lwc_g > 0.005,
+        beta_vis * lwc_g ** (-0.65),
+        10000.0          # видимост > 10 km
+    )
+    return np.clip(vis, 0.0, 10000.0)
+
+
+def vis_to_metar_category(vis_m: float) -> str:
+    """ICAO MET категория по видимост."""
+    if vis_m < 200:   return "LIFR"
+    if vis_m < 600:   return "IFR"
+    if vis_m < 800:   return "MVFR"
+    return "VFR"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Турбулентна параметризация
+# ──────────────────────────────────────────────────────────────────────────────
+
+def louis_stability_function(Ri: np.ndarray,
+                              z: np.ndarray,
+                              z0: float = 0.1) -> np.ndarray:
+    """
+    Функция за устойчивост по Louis (1979).
+    Връща K_m [m²/s] за всяко ниво.
+    """
+    kv = 0.4       # константа на фон Карман
+    # Смесващата дължина (опростена)
+    z_safe = np.maximum(z, 0.01)
+    l = kv * z_safe / (1.0 + kv * z_safe / 200.0)
+
+    # Ричардсон → функция за устойчивост
+    fm = np.where(
+        Ri < 0,
+        1.0 - 5.0 * Ri / (1.0 + 75.0 * kv**2 * np.sqrt(np.abs(Ri) + 1e-6)),
+        np.maximum((1.0 - 5.0 * Ri) ** 2, 0.01)
+    )
+    # Скорост на срязване (опростена — задаваме фонова ≥ 0.1 m/s)
+    shear_min = 0.1  # m/s/m
+    Km = l ** 2 * shear_min * fm
+    return np.clip(Km, 1e-4, 5.0)
+
+
+def bulk_richardson(theta_v: np.ndarray, u: np.ndarray,
+                    v: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Bulk Richardson number между нивата."""
+    Ri = np.zeros_like(z)
+    dz  = np.diff(z)
+    dth = np.diff(theta_v)
+    du  = np.diff(u)
+    dv  = np.diff(v)
+    dU2 = du**2 + dv**2 + 1e-6
+    Ri[1:] = (g / theta_v[:-1]) * (dth / dz) * (dz**2) / dU2
+    Ri[0]  = Ri[1]
+    return np.clip(Ri, -5.0, 5.0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Радиационна схема — Two-stream (LW + SW)
+# Bott et al. (1990) PAFOG, Bergot & Guédalia (1994) COBEL
+# ──────────────────────────────────────────────────────────────────────────────
+
+K_EXT_LW   = 130.0   # m²/kg  LW extinction на мъглени капки
+K_EXT_SW   = 50.0    # m²/kg  SW extinction
+ALBEDO_FOG = 0.30    # отражателна способност на мъглата
+EMISS_SFC  = 0.95    # излъчвателна способност на земята
+ALPHA_AIR  = 0.03    # SW поглъщане на чист въздух
+
+
+def _sin_elevation(hour_utc, day_of_year, lat_deg=42.7):
+    """Синус на слънчевия елевационен ъгъл по Cooper (1969)."""
+    phi  = np.deg2rad(lat_deg)
+    decl = np.deg2rad(23.45 * np.sin(np.deg2rad(360*(284+day_of_year)/365)))
+    ha   = np.deg2rad((hour_utc - 12.0) * 15.0)
+    return max(float(np.sin(phi)*np.sin(decl) +
+                     np.cos(phi)*np.cos(decl)*np.cos(ha)), 0.0)
+
+
+def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
+    """
+    Two-stream радиационна схема (LW + SW). Връща dT/dt [K/s].
+
+    LW: F↑(z) = емисия от слоевете под z, ослабена по пътя нагоре.
+        F↓(z) = емисия от атмосферата над z, ослабена надолу.
+        Нагряване = -d(F↑ - F↓)/dz / (ρ·cp)
+
+    SW: Flux отгоре надолу, ослабен от мъглата.
+        Загряване = -dSW/dz · absorption / (ρ·cp)
+    """
+    nz    = len(T)
+    dz    = np.gradient(z)
+    dQ_dt = np.zeros(nz)
+    B     = sigma * T**4          # черно-тялова емисия [W/m²]
+    lwc_vol = ql * rho            # [kg/m³]
+    lwp_path = np.cumsum(lwc_vol * dz)        # LWP от дъното до ниво i
+    lwp_esc  = np.cumsum((lwc_vol*dz)[::-1])[::-1]  # LWP от ниво i до върха
+
+    # ── F↑: flux нагоре на ниво i ──
+    # = емисия от земята + емисия от слоевете j < i,
+    #   всяка ослабена с τ(j→i) = exp(-K * (LWP_path[i] - LWP_path[j]))
+    F_up = np.zeros(nz)
+    for i in range(nz):
+        # Земна повърхност
+        F_up[i] = EMISS_SFC * B[0] * np.exp(-K_EXT_LW * lwp_path[i])
+        # Слоеве j < i
+        for j in range(i):
+            eps_j   = 1.0 - np.exp(-K_EXT_LW * lwc_vol[j] * dz[j])
+            tau_j_i = np.exp(-K_EXT_LW * (lwp_path[i] - lwp_path[j]))
+            F_up[i] += B[j] * eps_j * tau_j_i
+
+    # ── F↓: flux надолу на ниво i ──
+    # = емисия от атмосферата над i (сив слой),
+    #   ослабена с τ(top→i) = exp(-K * LWP_esc[i])
+    F_down = np.zeros(nz)
+    for i in range(nz):
+        F_down[i] = emiss_air * B[-1] * np.exp(-K_EXT_LW * lwp_esc[i])
+        # Слоеве j > i
+        for j in range(i+1, nz):
+            eps_j   = 1.0 - np.exp(-K_EXT_LW * lwc_vol[j] * dz[j])
+            tau_j_i = np.exp(-K_EXT_LW * (lwp_esc[i] - lwp_esc[j]))
+            F_down[i] += B[j] * eps_j * tau_j_i
+
+    # Нагряване от LW [K/s]: охлаждане когато нетният upward flux нараства с z
+    dQ_lw = -np.gradient(F_up - F_down, z) / (rho * cp)
+
+    # Физическо ограничение: LW охлаждане не може да надвишава
+    # ~1 K/hr при мъгла и ~0.3 K/hr при ясно небе
+    # Реални стойности от PAFOG верификации: макс ~0.8 K/hr в мъглата
+    lwp_col = float(lwp_path[-1])
+    # max_cool варира плавно с LWP
+    # при ясно: 0.2 K/hr; при мъгла (LWP~0.05 kg/m²): 0.8 K/hr
+    max_cool_val = 0.2 + 0.6 * np.tanh(lwp_col / 0.02)   # K/hr
+    max_cool = max_cool_val / 3600.0
+    dQ_lw = np.maximum(dQ_lw, -max_cool)   # ограничаваме охлаждането
+
+    dQ_dt += dQ_lw
+
+    # ── SW flux надолу ──
+    sin_el = _sin_elevation(hour_utc, day_of_year)
+    if sin_el > 0.01:
+        SW_top    = 1361.0 * 0.75 * sin_el
+        tau_SW    = np.exp(-K_EXT_SW * lwp_esc)   # прозрачност от върха до z
+        SW_dn     = SW_top * tau_SW
+        fog_mask  = ql > 1e-5
+        absorpt   = np.where(fog_mask, 1.0 - ALBEDO_FOG, ALPHA_AIR)
+        # В мъглата: поглъщане от дивергенцията на flux-а
+        dQ_dt += -np.gradient(SW_dn, z) * absorpt / (rho * cp)
+        # При ясно небе: фонов SW член (водна пара поглъща в целия PBL)
+        # dT/dt_SW = SW_sfc * alpha_bulk / (rho * cp * H_pbl)
+        # alpha_bulk~0.1, H_pbl~1000m → ~0.3 K/hr при обед
+        H_pbl = max(z[-1], 500.0)
+        dQ_dt += SW_top * ALPHA_AIR * 3.0 / (rho * cp * H_pbl)
+
+    # ── Фоново LW охлаждане при ясно небе ──────────────────────────────────────
+    # При ясно небе (без мъгла) two-stream дава ~0 охлаждане защото
+    # F↑ ≈ F↓ в тънката 1D колона.
+    # Реалното нощно LW охлаждане е ~0.5-1 K/hr от загуба към Космоса.
+    # Параметризираме го като функция от T и час (нощем е по-силно).
+    lwp_total = float(lwp_path[-1])
+    if lwp_total < 0.001:   # ясно небе (без мъгла)
+        # Нощно охлаждане: Stefan-Boltzmann загуба от приземния слой
+        # dT/dt ≈ -emiss * sigma * T^4 / (rho * cp * H_eff)
+        # H_eff ~ 200m (ефективна дебелина на охлаждащия слой)
+        # При ясно небе: нетна загуба ≈ emiss*(F↑_sfc - F↓_sky)
+        # Опростено: ~0.5 K/hr нощем, намалява към обяд от SW компенсация
+        sin_el_now = _sin_elevation(hour_utc, day_of_year)
+        night_factor = max(1.0 - 2.0 * sin_el_now, 0.0)  # 1 нощем, 0 при висок слънчев ъгъл
+        H_eff  = 200.0   # m
+        dT_lw_clear = -(emiss_air * sigma * T[0]**4 * 0.015) / (rho[0] * cp * H_eff)
+        # Разпределяме в долните 200m с exp профил
+        weight = np.exp(-z / 100.0)
+        weight /= weight.sum()
+        dQ_dt += dT_lw_clear * night_factor * weight * len(z)
+
+    return dQ_dt
+
+
+# Backward-compatible обвивки (step() ги вика)
+def longwave_cooling(T, ql, z, rho):
+    return two_stream_radiation(T, ql, z, rho, hour_utc=0.0, day_of_year=1)
+
+def solar_heating(T, ql, rho, hour_utc, day_of_year=1):
+    return np.zeros_like(T)   # заменено от two_stream_radiation
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Микрофизика: кондензация / изпарение
+# ──────────────────────────────────────────────────────────────────────────────
+
+def microphysics(qv: np.ndarray, ql: np.ndarray,
+                 T: np.ndarray, p: np.ndarray,
+                 rho: np.ndarray, dt: float):
+    """
+    Bulk микрофизика: кондензация / изпарение.
+    Връща: dqv [kg/kg], dql [kg/kg], dT [K]
+    """
+    qs   = sat_mixing_ratio(T, p)
+    rh   = qv / (qs + 1e-12)
+    dqv  = np.zeros_like(qv)
+    dql  = np.zeros_like(ql)
+    dT   = np.zeros_like(T)
+
+    # Кондензация (rh > 1)
+    mask_cond = rh > 1.0
+    if mask_cond.any():
+        # Количество водна пара за кондензация
+        excess = (qv - qs) * mask_cond.astype(float)
+        # Ограничаваме за стабилност
+        dcond  = np.minimum(excess, qv * 0.5)
+        dqv   -= dcond
+        dql   += dcond
+        dT    += (Lv / cp) * dcond   # латентно загряване
+
+    # Изпарение (rh < 1 и има течна вода)
+    mask_evap = (rh < 0.98) & (ql > 1e-7)
+    if mask_evap.any():
+        deficit = (qs - qv) * mask_evap.astype(float)
+        devap   = np.minimum(deficit * 0.5, ql)
+        dqv    += devap
+        dql    -= devap
+        dT     -= (Lv / cp) * devap  # охлаждане при изпарение
+
+    return dqv, dql, dT
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Утаяване (sediment)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def settling_velocity(ql: np.ndarray) -> np.ndarray:
+    """
+    Стокесова скорост на утаяване [m/s] за облачни капки.
+    Ефективният радиус се изчислява от LWC и N_d.
+    """
+    lwc_g = ql * 1000.0  # kg/kg → г/кг (оценка с rho≈1)
+    # r_eff от N и LWC: r = (3*LWC / 4*pi*rho_w*N)^(1/3)
+    lwc_vol = np.maximum(ql, 1e-12)
+    r3 = 3.0 * lwc_vol / (4.0 * np.pi * rho_w * N_d)
+    r_eff = np.cbrt(r3)
+    r_eff = np.clip(r_eff, r_eff_min, r_eff_max)
+    # Стокес: v = 2*rho_w*g*r^2 / (9*mu); mu_air ≈ 1.8e-5
+    mu_air = 1.8e-5  # Pa·s
+    v_s = 2.0 * rho_w * g * r_eff**2 / (9.0 * mu_air)
+    return np.clip(v_s, 0.0, 0.05)   # ограничение за стабилност
+
+
+def apply_settling(ql: np.ndarray, dz: float, dt: float) -> np.ndarray:
+    """Прилага утаяване чрез upwind схема."""
+    v_s  = settling_velocity(ql)
+    flux = v_s * ql
+    dql  = np.zeros_like(ql)
+    # Downward flux (капките падат надолу)
+    dql[1:]  += flux[:-1] / dz
+    dql[:-1] -= flux[:-1] / dz
+    dql[0]   -= flux[0]   / dz  # губи се на земята
+    return np.clip(dql * dt, -ql, 0.0)  # само загуба от ниво
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Турбулентна дифузия (Crank-Nicolson трипо-диагонална схема)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def turbulent_diffusion(phi: np.ndarray, K: np.ndarray,
+                        rho: np.ndarray, z: np.ndarray, dt: float) -> np.ndarray:
+    """
+    Имплицитна дифузия на скалара phi с коефициент K.
+    Решава: phi_new = phi + dt * d/dz(K * dphi/dz)
+    """
+    n  = len(phi)
+    dz = np.diff(z)
+    dz_full = np.concatenate([[dz[0]], 0.5*(dz[:-1]+dz[1:]), [dz[-1]]])
+
+    # Интерфейсни K-стойности
+    K_int = 0.5 * (K[:-1] + K[1:])
+
+    # Коефициенти за тридиагонална матрица
+    a = np.zeros(n)   # sub-diagonal
+    b = np.ones(n)    # main diagonal
+    c = np.zeros(n)   # super-diagonal
+
+    for i in range(1, n - 1):
+        dzm = z[i]   - z[i-1]
+        dzp = z[i+1] - z[i]
+        r_m = K_int[i-1] * dt / (dzm * dz_full[i])
+        r_p = K_int[i]   * dt / (dzp * dz_full[i])
+        a[i] = -r_m
+        b[i] = 1.0 + r_m + r_p
+        c[i] = -r_p
+
+    # Гранични условия (Neumann - нулев поток)
+    b[0] = 1.0;  c[0] = 0.0
+    a[-1] = 0.0; b[-1] = 1.0
+
+    # Thomas алгоритъм
+    phi_new = _thomas(a, b, c, phi.copy())
+    return phi_new
+
+
+def _thomas(a, b, c, d):
+    """Thomas (тридиагонален) алгоритъм."""
+    n = len(d)
+    c_ = np.zeros(n)
+    d_ = np.zeros(n)
+    x  = np.zeros(n)
+    c_[0] = c[0] / b[0]
+    d_[0] = d[0] / b[0]
+    for i in range(1, n):
+        m = b[i] - a[i] * c_[i-1]
+        if abs(m) < 1e-15:
+            m = 1e-15
+        c_[i] = c[i] / m
+        d_[i] = (d[i] - a[i] * d_[i-1]) / m
+    x[-1] = d_[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = d_[i] - c_[i] * x[i+1]
+    return x
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Основен клас: FogModel1D
+# ──────────────────────────────────────────────────────────────────────────────
+
+class FogModel1D:
+    """
+    Едномерен физически модел за мъгла, базиран на PAFOG.
+
+    Параметри
+    ----------
+    z       : np.ndarray  - нива [m AGL], нарастващо
+    T       : np.ndarray  - температура [K]
+    qv      : np.ndarray  - специфична влажност [kg/kg]
+    p       : np.ndarray  - налягане [Pa]
+    u, v    : np.ndarray  - компоненти на вятъра [m/s]
+    hour0   : float       - начален час UTC (за радиацията)
+    dt      : float       - времева стъпка [s] (default 60)
+    """
+
+    def __init__(self, z, T, qv, p, u, v, hour0=0.0, dt=60.0, day_of_year=None):
+        # Вертикална мрежа
+        self.z    = np.array(z,  dtype=float)
+        self.nz   = len(z)
+        self.dz   = np.mean(np.diff(z))
+
+        # Прогностични променливи
+        self.T    = np.array(T,  dtype=float)
+        self.qv   = np.array(qv, dtype=float)
+        self.ql   = np.zeros(self.nz)   # начален LWC = 0
+        self.u    = np.array(u,  dtype=float)
+        self.v    = np.array(v,  dtype=float)
+        self.p    = np.array(p,  dtype=float)
+
+        # Производни величини
+        self.rho  = self.p / (Rd * self.T)
+
+        self.hour0 = float(hour0)
+        self.dt    = float(dt)
+        self.time  = 0.0   # секунди от началото
+
+        # Ден от годината за коректна слънчева деклинация
+        if day_of_year is None:
+            from datetime import datetime, timezone
+            self.day_of_year = datetime.now(timezone.utc).timetuple().tm_yday
+        else:
+            self.day_of_year = int(day_of_year)
+
+        # Диагностика
+        self.history = []  # списък с dict за всеки изходен час
+
+    # ─────────────────────────────────────────────
+    # Стъпка напред
+    # ─────────────────────────────────────────────
+
+    def step(self):
+        """Напредва с dt секунди."""
+        T  = self.T.copy()
+        qv = self.qv.copy()
+        ql = self.ql.copy()
+
+        # 1. Потенциална температура
+        theta    = T_to_theta(T, self.p)
+        theta_v  = virtual_potential_temp(theta, qv, ql)
+
+        # 2. Richardson → K
+        Ri = bulk_richardson(theta_v, self.u, self.v, self.z)
+        K  = louis_stability_function(Ri, self.z)
+
+        # 3. Дифузия
+        T_new  = turbulent_diffusion(T,  K, self.rho, self.z, self.dt)
+        qv_new = turbulent_diffusion(qv, K, self.rho, self.z, self.dt)
+        ql_new = turbulent_diffusion(ql, K, self.rho, self.z, self.dt)
+        ql_new = np.maximum(ql_new, 0.0)
+
+        # 4. Радиация
+        hour_now = (self.hour0 + self.time / 3600.0) % 24.0
+        dT_rad = two_stream_radiation(
+            T_new, ql_new, self.z, self.rho, hour_now, self.day_of_year)
+
+        # Физическа горна граница на нощното охлаждане:
+        # Реалната нощна загуба при влажна котловинна нощ е ~0.25 K/hr
+        # при ясно небе. Топлинният флукс от почвата (не моделиран)
+        # допълнително забавя охлаждането.
+        max_cool_rate = 0.35 / 3600.0   # K/s = 0.35 K/hr
+        sin_el = _sin_elevation(hour_now, self.day_of_year)
+        if sin_el < 0.05:   # нощем/здрач
+            dT_rad = np.maximum(dT_rad, -max_cool_rate)
+
+        T_new += dT_rad * self.dt
+
+        # 5. Микрофизика
+        dqv, dql, dT_mic = microphysics(qv_new, ql_new, T_new, self.p, self.rho, self.dt)
+        qv_new += dqv
+        ql_new += dql
+        T_new  += dT_mic
+
+        # 6. Утаяване
+        dql_set = apply_settling(ql_new, self.dz, self.dt)
+        ql_new  = np.maximum(ql_new + dql_set, 0.0)
+
+        # 7. Обновяване на плътността
+        self.rho = self.p / (Rd * T_new)
+
+        # Запазваме
+        self.T  = T_new
+        self.qv = np.maximum(qv_new, 1e-8)
+        self.ql = ql_new
+        self.time += self.dt
+
+    # ─────────────────────────────────────────────
+    # Запис на диагностика
+    # ─────────────────────────────────────────────
+
+    def diagnose(self):
+        """Изчислява и записва текущата диагностика."""
+        rh   = relative_humidity(self.qv, self.T, self.p)
+        vis  = lwc_to_visibility(self.ql)
+        hour = (self.hour0 + self.time / 3600.0) % 24.0
+
+        rec = {
+            "time_h"  : round(self.time / 3600.0, 2),
+            "hour_utc": round(hour, 1),
+            "z"       : self.z.copy(),
+            "T"       : self.T.copy(),
+            "qv"      : self.qv.copy(),
+            "ql"      : self.ql.copy(),
+            "rh"      : rh,
+            "vis"     : vis,
+            # Приземна (z[0])
+            "T_sfc"   : float(self.T[0]),
+            "rh_sfc"  : float(rh[0]),
+            "vis_sfc" : float(vis[0]),
+            "ql_sfc"  : float(self.ql[0]),
+            "cat"     : vis_to_metar_category(float(vis[0])),
+        }
+        self.history.append(rec)
+        return rec
+
+    # ─────────────────────────────────────────────
+    # Основна прогноза
+    # ─────────────────────────────────────────────
+
+    def run(self, hours: float = 12.0, output_interval_min: int = 60,
+            verbose: bool = True):
+        """
+        Стартира прогнозата.
+
+        hours               : продължителност [h]
+        output_interval_min : интервал за изход [min]
+        """
+        steps_total   = int(hours * 3600 / self.dt)
+        output_every  = int(output_interval_min * 60 / self.dt)
+
+        self.diagnose()   # t=0
+
+        if verbose:
+            print(f"{'Час UTC':>8} | {'T[0]°C':>8} | {'RH[0]%':>7} | "
+                  f"{'LWC g/m³':>9} | {'VIS m':>7} | CAT")
+            print("-" * 62)
+            r = self.history[0]
+            print(f"{r['hour_utc']:8.1f} | {r['T_sfc']-273.15:8.2f} | "
+                  f"{r['rh_sfc']*100:7.1f} | {r['ql_sfc']*1000:9.4f} | "
+                  f"{r['vis_sfc']:7.0f} | {r['cat']}")
+
+        for step_n in range(1, steps_total + 1):
+            self.step()
+
+            if step_n % output_every == 0:
+                r = self.diagnose()
+                if verbose:
+                    print(f"{r['hour_utc']:8.1f} | {r['T_sfc']-273.15:8.2f} | "
+                          f"{r['rh_sfc']*100:7.1f} | {r['ql_sfc']*1000:9.4f} | "
+                          f"{r['vis_sfc']:7.0f} | {r['cat']}")
+
+        if verbose:
+            print("\nПрогнозата завърши.")
+        return self.history
