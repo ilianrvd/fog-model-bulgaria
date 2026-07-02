@@ -89,7 +89,7 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 def main():
     now_utc = datetime.now(timezone.utc)
     run_time = now_utc.strftime("%Y-%m-%d %H:%M UTC")
-    print(f"\n[ОПЕРАТИВЕН РУН] {run_time}")
+    print(f"\n[FOG NOWCAST] {run_time}")
 
     # METAR
     try:
@@ -265,7 +265,7 @@ def build_html(payload):
 </head>
 <body>
 
-<h1>ДП РВД — Прогноза мъгла и видимост</h1>
+<h1>Airport Fog Nowcasting</h1>
 <div class="run-time">Последен рун: {run_time} | Следващ: автоматично след 1 час</div>
 
 <div class="legend">
@@ -301,7 +301,7 @@ def build_html(payload):
 {detail}
 
 <div class="footer">
-  ДП РВД — Авиационна метеорология | 1D Fog Model (PAFOG-type) |
+  1D Fog Model (PAFOG-type) |
   Данни: ICON-EU (Open-Meteo) + METAR (aviationweather.gov)
 </div>
 
