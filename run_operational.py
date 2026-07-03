@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from fog_model      import FogModel1D
 from icon_reader    import fetch_icon_eu, fetch_icon_eu_all, AIRPORT_COORDS
 from metar_fetcher  import fetch_all_airports
-from ogimet_fetcher import fetch_metar_ogimet
+from ogimet_fetcher import fetch_metar_ogimet, fetch_all_ogimet_parallel
 from metar_parser   import parse_metar, apply_metar_correction
 from run_case       import build_surface_layer, diagnose_regime, apply_nudging, AIRPORT_CONFIG, get_sst
 
@@ -149,18 +149,16 @@ def main():
     _now = _dt_mod.datetime.now(_dt_mod.timezone.utc)
     _date = _now.strftime("%Y-%m-%d")
     _hour = _now.hour
+    # Паралелно изтегляне на METAR за всички летища (~25s вместо 125s)
+    all_obs = fetch_all_ogimet_parallel(ALL_AIRPORTS, _date,
+                                         hour0=max(_hour-2, 0), hours=3)
     metars = {}
     for icao in ALL_AIRPORTS:
-        try:
-            obs = fetch_metar_ogimet(icao, _date, hour0=max(_hour-2, 0), hours=3, sleep_s=25)
-            if obs:
-                # Намираме най-близкото наблюдение до текущия час
-                best = min(obs, key=lambda o: abs(
-                    int(o["time"][11:13]) - _hour))
-                metars[icao] = best.get("raw", "")
-                print(f"[METAR] {icao}: {metars[icao][:60]}")
-        except Exception as e:
-            print(f"[METAR] ⚠ {icao}: {e}")
+        obs = all_obs.get(icao, [])
+        if obs:
+            best = min(obs, key=lambda o: abs(int(o["time"][11:13]) - _hour))
+            metars[icao] = best.get("raw", "")
+            print(f"[METAR] {icao}: {metars[icao][:60]}")
 
     # Зареждаме ICON профили за всички летища с 1 заявка
     try:

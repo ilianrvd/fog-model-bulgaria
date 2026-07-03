@@ -49,7 +49,7 @@ BG_AIRPORTS = {
 
 def fetch_metar_ogimet(icao: str, date_str: str,
                        hour0: int = 0, hours: int = 26,
-                       sleep_s: float = 1.0) -> list:
+                       sleep_s: float = 25.0) -> list:
     """
     Изтегля METAR от OGIMET за летище и период.
 
@@ -163,6 +163,41 @@ def fetch_all_ogimet(icao_list: list, date_str: str,
 # ──────────────────────────────────────────────────────────────
 # Намиране на наблюдение за даден час
 # ──────────────────────────────────────────────────────────────
+
+def fetch_all_ogimet_parallel(icao_list: list, date_str: str,
+                               hour0: int = 0, hours: int = 26) -> dict:
+    """
+    Изтегля METAR от OGIMET за всички летища паралелно.
+    Спестява ~100 секунди изчакване спрямо последователно.
+    """
+    import threading
+
+    results = {}
+    lock    = threading.Lock()
+
+    def fetch_one(icao):
+        try:
+            obs = fetch_metar_ogimet(icao, date_str, hour0, hours, sleep_s=0)
+            with lock:
+                results[icao] = obs
+        except Exception as e:
+            print(f"[OGIMET] ⚠ {icao}: {e}")
+            with lock:
+                results[icao] = []
+
+    threads = [threading.Thread(target=fetch_one, args=(icao,))
+               for icao in icao_list]
+    for t in threads:
+        t.start()
+    # OGIMET изисква пауза между заявките — стартираме с 2s разлика
+    import time
+    for t in threads[1:]:
+        time.sleep(2)
+    for t in threads:
+        t.join()
+
+    return results
+
 
 def find_obs_at(all_obs: dict, icao: str,
                 target_hour: int, date_str: str,
