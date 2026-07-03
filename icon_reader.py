@@ -34,6 +34,15 @@ AIRPORT_COORDS = {
 # Нива за профила (hPa) — от земята нагоре
 PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 700]
 
+# Детекция на средата
+import os as _os
+_IS_GITHUB_ACTIONS = _os.getenv("GITHUB_ACTIONS") == "true"
+if _IS_GITHUB_ACTIONS:
+    _ICON_BASE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    print("[ICON-EU] Среда: GitHub Actions → ensemble-api")
+else:
+    _ICON_BASE_URL = "https://api.open-meteo.com/v1/dwd-icon"
+
 # Физически константи
 Rd    = 287.05
 g     = 9.81
@@ -97,7 +106,9 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "models"       : "icon_eu",
     }
 
-    url = "https://api.open-meteo.com/v1/dwd-icon?" + urllib.parse.urlencode(params)
+    # URL зависи от средата
+    params["models"] = "icon_eu"
+    url = _ICON_BASE_URL + "?" + urllib.parse.urlencode(params)
 
     print(f"[ICON-EU] Изтегляне на профил за {icao} ({coords['name']})...")
     print(f"[ICON-EU] URL: {url[:80]}...")
@@ -127,6 +138,16 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
     hourly = data["hourly"]
     times  = hourly["time"]                    # ISO strings
 
+
+    # Helper за 2D ensemble данни (ensemble-api връща [member][час])
+    def _get(field, ti):
+        val = hourly.get(field)
+        if val is None:
+            return None
+        if isinstance(val[0], list):
+            return val[0][ti] if ti < len(val[0]) else None
+        return val[ti] if ti < len(val) else None
+
     # Намери текущия час (или най-близкия)
     now_utc = datetime.now(timezone.utc)
     now_str = now_utc.strftime("%Y-%m-%dT%H:00")
@@ -148,7 +169,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
     ws_list  = []
     wd_list  = []
 
-    sfc_p_hPa = hourly.get("surface_pressure", [101325/100]*len(times))[t0_idx] or 1013.25
+    sfc_p_hPa = _get("surface_pressure", t0_idx) or 1013.25
 
     for lev in PRESSURE_LEVELS:
         p_hPa = float(lev)
@@ -158,11 +179,11 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         if p_hPa > sfc_p_hPa + 5:
             continue
 
-        T_C   = hourly.get(f"temperature_{lev}hPa",       [None]*len(times))[t0_idx]
-        rh    = hourly.get(f"relativehumidity_{lev}hPa",  [None]*len(times))[t0_idx]
-        z_m   = hourly.get(f"geopotential_height_{lev}hPa",[None]*len(times))[t0_idx]
-        ws    = hourly.get(f"windspeed_{lev}hPa",         [None]*len(times))[t0_idx]
-        wd    = hourly.get(f"winddirection_{lev}hPa",     [None]*len(times))[t0_idx]
+        T_C   = _get(f"temperature_{lev}hPa", t0_idx)
+        rh    = _get(f"relativehumidity_{lev}hPa", t0_idx)
+        z_m   = _get(f"geopotential_height_{lev}hPa", t0_idx)
+        ws    = _get(f"windspeed_{lev}hPa", t0_idx)
+        wd    = _get(f"winddirection_{lev}hPa", t0_idx)
 
         if None in (T_C, rh, z_m):
             continue
@@ -199,10 +220,10 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
     v = -ws * np.cos(np.deg2rad(wd))
 
     # Приземна корекция (2m данни са по-точни от 1000 hPa)
-    T2m = hourly.get("temperature_2m",  [None]*len(times))[t0_idx]
-    Td2m = hourly.get("dewpoint_2m",    [None]*len(times))[t0_idx]
-    ws10 = hourly.get("windspeed_10m",  [None]*len(times))[t0_idx]
-    wd10 = hourly.get("winddirection_10m",[None]*len(times))[t0_idx]
+    T2m = _get("temperature_2m", t0_idx)
+    Td2m = _get("dewpoint_2m", t0_idx)
+    ws10 = _get("windspeed_10m", t0_idx)
+    wd10 = _get("winddirection_10m", t0_idx)
 
     if T2m is not None:
         weight = np.exp(-z / 80.0)
