@@ -696,20 +696,24 @@ def run_case(icao: str, date_str: str, hour0: int,
             hour_now = (float(hour0) + hour_elapsed) % 24
             sin_el = _sin_elevation(hour_now, doy)
 
-            if sin_el > 0.1 and current_regime == "radiative":
-                # След изгрев — включваме плавен nudging за T
+            # Различаваме изгрев от залез:
+            # при изгрев sin_el нараства, при залез намалява
+            hour_next = (hour_now + 1) % 24
+            sin_el_next = _sin_elevation(hour_next, doy)
+            is_sunrise = sin_el > 0.05 and sin_el_next > sin_el
+
+            if is_sunrise and current_regime == "radiative":
+                # Изгрев — включваме плавен nudging за T
                 new_regime = "dynamic"
                 new_tau    = 7200   # τ=2h — плавен, не рязък
-                new_reason = f"Изгрев (sin_el={sin_el:.2f}) → nudging T τ=2h"
+                new_reason = f"Изгрев (sin_el={sin_el:.2f}↑) → nudging T τ=2h"
 
-            # След изгрев не се връщаме към RADIATIVE
+            # След изгрев не се връщаме към RADIATIVE докато слънцето расте
             if current_regime == "dynamic" and new_regime == "radiative":
-                hour_now_chk = (float(hour0) + hour_elapsed) % 24
-                sin_el_chk = _sin_elevation(hour_now_chk, doy)
-                if sin_el_chk > 0.05:   # слънцето е над хоризонта
+                if is_sunrise:
                     new_regime = "dynamic"
                     new_tau    = current_tau
-                    new_reason = "Слънцето е изгряло — задържаме DYNAMIC"
+                    new_reason = "Изгрев продължава — задържаме DYNAMIC"
 
             if new_regime != current_regime:
                 print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "

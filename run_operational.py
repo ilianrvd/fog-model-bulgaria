@@ -99,13 +99,16 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
             hour_now = (float(profile["hour0"]) + hour_elapsed) % 24
             sin_el = _sin_elevation(hour_now, doy)
 
-            if sin_el > 0.1 and current_regime == "radiative":
+            hour_next = (hour_now + 1) % 24
+            sin_el_next = _sin_elevation(hour_next, doy)
+            is_sunrise = sin_el > 0.05 and sin_el_next > sin_el
+
+            if is_sunrise and current_regime == "radiative":
                 new_regime = "dynamic"
                 new_tau    = 7200
 
-            # След изгрев не се връщаме към RADIATIVE
             if current_regime == "dynamic" and new_regime == "radiative":
-                if sin_el > 0.05:
+                if is_sunrise:
                     new_regime = "dynamic"
                     new_tau    = current_tau
 
