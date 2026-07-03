@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from fog_model      import FogModel1D
 from icon_reader    import fetch_icon_eu, AIRPORT_COORDS
 from metar_fetcher  import fetch_all_airports
+from ogimet_fetcher import fetch_metar_ogimet
 from metar_parser   import parse_metar, apply_metar_correction
 from run_case       import build_surface_layer, diagnose_regime, apply_nudging, AIRPORT_CONFIG, get_sst
 
@@ -129,12 +130,23 @@ def main():
     run_time = now_utc.strftime("%Y-%m-%d %H:%M UTC")
     print(f"\n[FOG NOWCAST] {run_time}")
 
-    # METAR
-    try:
-        metars = fetch_all_airports(ALL_AIRPORTS)
-    except Exception as e:
-        print(f"METAR грешка: {e}")
-        metars = {}
+    # METAR от OGIMET (по-надеждно от GitHub Actions)
+    from datetime import datetime, timezone
+    _now = datetime.now(timezone.utc)
+    _date = _now.strftime("%Y-%m-%d")
+    _hour = _now.hour
+    metars = {}
+    for icao in ALL_AIRPORTS:
+        try:
+            obs = fetch_metar_ogimet(icao, _date, hour0=max(_hour-2, 0), hours=3, sleep_s=25)
+            if obs:
+                # Намираме най-близкото наблюдение до текущия час
+                best = min(obs, key=lambda o: abs(
+                    int(o["time"][11:13]) - _hour))
+                metars[icao] = best.get("raw", "")
+                print(f"[METAR] {icao}: {metars[icao][:60]}")
+        except Exception as e:
+            print(f"[METAR] ⚠ {icao}: {e}")
 
     # Модел за всяко летище
     results = {}
@@ -340,7 +352,7 @@ def build_html(payload):
 
 <div class="footer">
   1D Fog Model (PAFOG-type) |
-  Данни: ICON-EU (Open-Meteo) + METAR (aviationweather.gov)
+  Данни: ICON-EU (Open-Meteo) + METAR (OGIMET)
 </div>
 
 </body>
