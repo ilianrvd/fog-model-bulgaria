@@ -33,12 +33,7 @@ AIRPORT_COORDS = {
 
 # Нива за профила (hPa) — от земята нагоре
 # Стандартни нива за api.open-meteo.com
-PRESSURE_LEVELS_FULL     = [1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 700]
-# Ensemble-api поддържа по-малко нива
-PRESSURE_LEVELS_ENSEMBLE = [1000, 925, 850, 700, 500]
 
-# Избираме по среда
-PRESSURE_LEVELS = PRESSURE_LEVELS_ENSEMBLE if _IS_GITHUB_ACTIONS else PRESSURE_LEVELS_FULL
 
 # Детекция на средата
 import os as _os
@@ -48,6 +43,13 @@ if _IS_GITHUB_ACTIONS:
     print("[ICON-EU] Среда: GitHub Actions → ensemble-api")
 else:
     _ICON_BASE_URL = "https://api.open-meteo.com/v1/dwd-icon"
+
+PRESSURE_LEVELS_FULL     = [1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 700]
+# Ensemble-api поддържа по-малко нива
+PRESSURE_LEVELS_ENSEMBLE = [1000, 925, 850, 700, 500]
+
+# Избираме по среда
+PRESSURE_LEVELS = PRESSURE_LEVELS_ENSEMBLE if _IS_GITHUB_ACTIONS else PRESSURE_LEVELS_FULL
 
 # Физически константи
 Rd    = 287.05
