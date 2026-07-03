@@ -2,7 +2,7 @@ name: Fog Forecast
 
 on:
   schedule:
-    - cron: '20 18,19,20,21,22,23 * * *'
+    # - cron: '20 18,19,20,21,22,23 * * *'  # временно спряно
   workflow_dispatch:
 
 permissions:
