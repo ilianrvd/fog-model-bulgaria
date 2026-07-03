@@ -11,6 +11,7 @@ permissions:
 jobs:
   forecast:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repo
@@ -27,6 +28,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run fog model
+        timeout-minutes: 12
         run: python run_operational.py
 
       - name: Commit and push results
