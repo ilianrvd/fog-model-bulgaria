@@ -131,8 +131,8 @@ def main():
     print(f"\n[FOG NOWCAST] {run_time}")
 
     # METAR от OGIMET (по-надеждно от GitHub Actions)
-    from datetime import datetime, timezone
-    _now = datetime.now(timezone.utc)
+    import datetime as _dt_mod
+    _now = _dt_mod.datetime.now(_dt_mod.timezone.utc)
     _date = _now.strftime("%Y-%m-%d")
     _hour = _now.hour
     metars = {}
