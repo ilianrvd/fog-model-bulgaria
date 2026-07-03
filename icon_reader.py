@@ -106,13 +106,22 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "User-Agent": "fog-model-dprvd/1.0 (aviation-met@bulatsa.bg)"
     })
 
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Open-Meteo HTTP грешка: {e.code} {e.reason}")
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"Мрежова грешка: {e.reason}")
+    import time as _time
+    last_err = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read())
+            last_err = None
+            break
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"Open-Meteo HTTP грешка: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            last_err = e
+            print(f"[ICON-EU] Опит {attempt+1}/3 неуспешен: {e.reason} — повтарям...")
+            _time.sleep(5)
+    if last_err:
+        raise RuntimeError(f"Мрежова грешка: {last_err.reason}")
 
     hourly = data["hourly"]
     times  = hourly["time"]                    # ISO strings

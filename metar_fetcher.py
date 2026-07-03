@@ -41,13 +41,22 @@ def fetch_metar(icao: str, hours: int = 2) -> str:
         "Accept"    : "application/json",
     })
 
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"AWC HTTP грешка: {e.code} {e.reason}")
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"Мрежова грешка: {e.reason}")
+    # Retry логика — 3 опита при timeout
+    last_err = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            last_err = None
+            break
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"AWC HTTP грешка: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            last_err = e
+            print(f"[METAR] Опит {attempt+1}/3 неуспешен: {e.reason} — повтарям...")
+            import time; time.sleep(5)
+    if last_err:
+        raise RuntimeError(f"Мрежова грешка: {last_err.reason}")
 
     if not data:
         raise RuntimeError(f"Няма METAR данни за {icao} в последните {hours} часа.")

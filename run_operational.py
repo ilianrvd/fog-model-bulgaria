@@ -74,12 +74,47 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
     model.diagnose()
 
+    current_regime = regime
+    current_tau    = tau
+
     for step in range(1, steps_total + 1):
         model.step()
-        if tau and hourly_profs:
-            hour_elapsed = step * dt / 3600.0
-            prof_idx     = min(int(hour_elapsed), len(hourly_profs)-1)
-            apply_nudging(model, hourly_profs[prof_idx], cfg["tau_T"], tau)
+
+        hour_elapsed = step * dt / 3600.0
+        prof_idx     = min(int(hour_elapsed), len(hourly_profs)-1)
+
+        # Hourly reassessment
+        if step % steps_per_hr == 0 and hourly_profs:
+            remaining = hourly_profs[prof_idx:]
+            if len(remaining) < 3:
+                remaining = hourly_profs[-3:]
+            import io, sys as _sys
+            _old_stdout = _sys.stdout
+            _sys.stdout = io.StringIO()
+            new_regime, new_tau, _ = diagnose_regime(
+                {"hourly_profiles": remaining}, {}, cfg)
+            _sys.stdout = _old_stdout
+
+            from fog_model import _sin_elevation
+            hour_now = (float(profile["hour0"]) + hour_elapsed) % 24
+            sin_el = _sin_elevation(hour_now, doy)
+
+            if sin_el > 0.1 and current_regime == "radiative":
+                new_regime = "dynamic"
+                new_tau    = 7200
+
+            # След изгрев не се връщаме към RADIATIVE
+            if current_regime == "dynamic" and new_regime == "radiative":
+                if sin_el > 0.05:
+                    new_regime = "dynamic"
+                    new_tau    = current_tau
+
+            current_regime = new_regime
+            current_tau    = new_tau
+
+        if current_tau and hourly_profs:
+            apply_nudging(model, hourly_profs[prof_idx], cfg["tau_T"], current_tau)
+
         if step % steps_per_hr == 0:
             model.diagnose()
 

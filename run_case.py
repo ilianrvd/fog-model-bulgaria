@@ -664,19 +664,66 @@ def run_case(icao: str, date_str: str, hour0: int,
           f"{r0['rh_sfc']*100:5.1f} | {r0['ql_sfc']*1000:9.4f} | "
           f"{r0['vis_sfc']:7.0f} | {r0['cat']}")
 
+    # Текущ режим и tau — ще се преоценяват hourly
+    current_regime = regime
+    current_tau    = tau
+
     for step in range(1, steps_total + 1):
         model.step()
 
-        # Nudging само ако режимът го изисква
-        if use_nudging and tau and hourly_profs:
-            hour_elapsed = step * dt / 3600.0
-            prof_idx     = min(int(hour_elapsed), len(hourly_profs) - 1)
-            apply_nudging(model, hourly_profs[prof_idx],
-                          cfg["tau_T"], tau)
+        hour_elapsed = step * dt / 3600.0
+        prof_idx     = min(int(hour_elapsed), len(hourly_profs) - 1)
 
-        # SST ограничение само за морска адвекция (advective режим)
-        # При RADIATIVE режим въздухът над суша може да охладне много под SST
-        if cfg.get("coastal") and regime == "advective":
+        # ── Hourly reassessment на режима ──────────────────────────────
+        if step % steps_per_hr == 0 and hourly_profs:
+            # Минимум 3 профила напред за надеждна диагноза
+            remaining_profs = hourly_profs[prof_idx:]
+            if len(remaining_profs) < 3:
+                remaining_profs = hourly_profs[-3:]  # последните 3 ако няма повече
+            # Временно заглушаваме print от diagnose_regime
+            import io, sys as _sys
+            _old_stdout = _sys.stdout
+            _sys.stdout = io.StringIO()
+            new_regime, new_tau, new_reason = diagnose_regime(
+                {"hourly_profiles": remaining_profs},
+                metar_dict, cfg
+            )
+            _sys.stdout = _old_stdout
+
+            # Слънцето е изгряло → принудително nudging за T
+            # (моделът не може да смята SW загряването правилно без NWP)
+            from fog_model import _sin_elevation
+            hour_now = (float(hour0) + hour_elapsed) % 24
+            sin_el = _sin_elevation(hour_now, doy)
+
+            if sin_el > 0.1 and current_regime == "radiative":
+                # След изгрев — включваме плавен nudging за T
+                new_regime = "dynamic"
+                new_tau    = 7200   # τ=2h — плавен, не рязък
+                new_reason = f"Изгрев (sin_el={sin_el:.2f}) → nudging T τ=2h"
+
+            # След изгрев не се връщаме към RADIATIVE
+            if current_regime == "dynamic" and new_regime == "radiative":
+                hour_now_chk = (float(hour0) + hour_elapsed) % 24
+                sin_el_chk = _sin_elevation(hour_now_chk, doy)
+                if sin_el_chk > 0.05:   # слънцето е над хоризонта
+                    new_regime = "dynamic"
+                    new_tau    = current_tau
+                    new_reason = "Слънцето е изгряло — задържаме DYNAMIC"
+
+            if new_regime != current_regime:
+                print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "
+                      f"{current_regime.upper()} → {new_regime.upper()} | {new_reason}")
+                current_regime = new_regime
+                current_tau    = new_tau
+
+        # ── Nudging с текущия режим ────────────────────────────────────
+        if use_nudging and current_tau and hourly_profs:
+            apply_nudging(model, hourly_profs[prof_idx],
+                          cfg["tau_T"], current_tau)
+
+        # SST ограничение само за морска адвекция
+        if cfg.get("coastal") and current_regime == "advective":
             sst = get_sst(date_str)
             T_floor = sst - 2.0 + 273.15
             model.T = np.maximum(model.T, T_floor)
