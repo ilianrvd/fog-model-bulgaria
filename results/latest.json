@@ -1,5 +1,5 @@
 {
-  "run_time": "2026-07-03 07:00 UTC",
+  "run_time": "2026-07-03 07:15 UTC",
   "airports": {
     "LBSF": {
       "name": "София",
@@ -15,11 +15,11 @@
     },
     "LBPD": {
       "name": "Пловдив",
-      "error": "Open-Meteo HTTP грешка: 429 Too Many Requests"
+      "error": "Недостатъчно вертикални нива от Open-Meteo."
     },
     "LBGO": {
       "name": "Г. Оряховица",
-      "error": "Open-Meteo HTTP грешка: 429 Too Many Requests"
+      "error": "Недостатъчно вертикални нива от Open-Meteo."
     }
   }
 }
