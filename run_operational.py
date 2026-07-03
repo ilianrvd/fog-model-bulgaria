@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 from fog_model      import FogModel1D
-from icon_reader    import fetch_icon_eu, AIRPORT_COORDS
+from icon_reader    import fetch_icon_eu, fetch_icon_eu_all, AIRPORT_COORDS
 from metar_fetcher  import fetch_all_airports
 from ogimet_fetcher import fetch_metar_ogimet
 from metar_parser   import parse_metar, apply_metar_correction
@@ -34,13 +34,27 @@ CAT_BG = {
     "VFR":  "#003a00",
 }
 
+# Кеш за ICON профилите — зареждаме всички с 1 заявка
+_ICON_PROFILES_CACHE = {}
+
+def load_icon_profiles_all(hours=12):
+    """Изтегля ICON профили за всички летища с 1 заявка."""
+    global _ICON_PROFILES_CACHE
+    _ICON_PROFILES_CACHE = fetch_icon_eu_all(ALL_AIRPORTS, forecast_hours=int(hours)+1)
+    print(f"[ICON-EU ALL] Заредени {len(_ICON_PROFILES_CACHE)} летища")
+
+
 def run_airport(icao, metar_raw, hours=12, dt=60):
     cfg = AIRPORT_CONFIG[icao]
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     doy = now.timetuple().tm_yday
 
-    profile = fetch_icon_eu(icao, forecast_hours=int(hours)+1)
+    # Вземаме от кеша или изтегляме поотделно
+    if icao in _ICON_PROFILES_CACHE:
+        profile = _ICON_PROFILES_CACHE[icao]
+    else:
+        profile = fetch_icon_eu(icao, forecast_hours=int(hours)+1)
 
     metar_dict = {}
     if metar_raw:
@@ -148,7 +162,14 @@ def main():
         except Exception as e:
             print(f"[METAR] ⚠ {icao}: {e}")
 
+    # Зареждаме ICON профили за всички летища с 1 заявка
+    try:
+        load_icon_profiles_all(hours=12)
+    except Exception as e:
+        print(f"[ICON-EU ALL] Грешка: {e} — ще опитаме поотделно")
+
     # Модел за всяко летище
+    import time as _time_op
     results = {}
     for icao in ALL_AIRPORTS:
         print(f"\n--- {icao} ---")
@@ -183,6 +204,7 @@ def main():
         except Exception as e:
             print(f"  ГРЕШКА: {e}")
             results[icao] = {"name": AIRPORT_COORDS[icao]["name"], "error": str(e)}
+
 
     # Запис на JSON
     os.makedirs("results", exist_ok=True)

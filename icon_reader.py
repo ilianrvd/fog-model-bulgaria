@@ -32,7 +32,13 @@ AIRPORT_COORDS = {
 }
 
 # Нива за профила (hPa) — от земята нагоре
-PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 700]
+# Стандартни нива за api.open-meteo.com
+PRESSURE_LEVELS_FULL     = [1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 700]
+# Ensemble-api поддържа по-малко нива
+PRESSURE_LEVELS_ENSEMBLE = [1000, 925, 850, 700, 500]
+
+# Избираме по среда
+PRESSURE_LEVELS = PRESSURE_LEVELS_ENSEMBLE if _IS_GITHUB_ACTIONS else PRESSURE_LEVELS_FULL
 
 # Детекция на средата
 import os as _os
@@ -126,6 +132,11 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
             last_err = None
             break
         except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = 30 * (attempt + 1)
+                print(f"[ICON-EU] 429 Too Many Requests — изчаквам {wait}s...")
+                _time.sleep(wait)
+                continue
             raise RuntimeError(f"Open-Meteo HTTP грешка: {e.code} {e.reason}")
         except urllib.error.URLError as e:
             last_err = e
@@ -327,3 +338,213 @@ if __name__ == "__main__":
     print(f"  T (°C)   : {[f'{v-273.15:.1f}' for v in prof['T']]}")
     print(f"  RH (%)   : {[f'{v*1000/0.622/(611.2*np.exp(17.67*(T-273.15)/(T-273.15+243.5))/p)*100:.0f}' for v,T,p in zip(prof['qv'],prof['T'],prof['p'])]}")
     print(f"  Nudging профили: {len(prof['hourly_profiles'])} часа")
+
+
+# ──────────────────────────────────────────────────────────────
+# Multi-location fetch — една заявка за всичките 5 летища
+# ──────────────────────────────────────────────────────────────
+
+def fetch_icon_eu_all(icao_list: list, forecast_hours: int = 13) -> dict:
+    """
+    Изтегля ICON-EU профили за всичките летища с ЕДНА заявка.
+    Избягва 429 rate limit при ensemble-api.
+
+    Връща dict {icao: profile_dict}
+    """
+    # Координати в правилен ред
+    coords_list = [(icao, AIRPORT_COORDS[icao]) for icao in icao_list
+                   if icao in AIRPORT_COORDS]
+
+    lats = ",".join(str(c["lat"]) for _, c in coords_list)
+    lons = ",".join(str(c["lon"]) for _, c in coords_list)
+
+    level_vars = []
+    for lev in PRESSURE_LEVELS:
+        level_vars += [
+            f"temperature_{lev}hPa",
+            f"relativehumidity_{lev}hPa",
+            f"geopotential_height_{lev}hPa",
+            f"windspeed_{lev}hPa",
+            f"winddirection_{lev}hPa",
+        ]
+
+    surface_vars = [
+        "temperature_2m", "dewpoint_2m", "surface_pressure",
+        "windspeed_10m", "winddirection_10m",
+    ]
+
+    params = {
+        "latitude"     : lats,
+        "longitude"    : lons,
+        "hourly"       : ",".join(surface_vars + level_vars),
+        "forecast_days": max(1, forecast_hours // 24 + 1),
+        "timezone"     : "UTC",
+        "models"       : "icon_eu",
+    }
+
+    url = _ICON_BASE_URL + "?" + urllib.parse.urlencode(params)
+    print(f"[ICON-EU ALL] {len(coords_list)} летища, 1 заявка")
+    print(f"[ICON-EU ALL] URL: {url[:80]}...")
+
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "fog-model-dprvd/1.0"
+    })
+
+    import time as _t
+    last_err = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data_list = json.loads(resp.read())
+            last_err = None
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = 30 * (attempt + 1)
+                print(f"[ICON-EU ALL] 429 — изчаквам {wait}s...")
+                _t.sleep(wait)
+                continue
+            raise RuntimeError(f"Open-Meteo HTTP {e.code}: {e.reason}")
+        except urllib.error.URLError as e:
+            last_err = e
+            wait = 15 * (attempt + 1)
+            print(f"[ICON-EU ALL] Опит {attempt+1}/5: {e.reason} — изчаквам {wait}s...")
+            _t.sleep(wait)
+    if last_err:
+        raise RuntimeError(f"Мрежова грешка: {last_err.reason}")
+
+    if not isinstance(data_list, list):
+        data_list = [data_list]
+
+    results = {}
+    for i, (icao, coords) in enumerate(coords_list):
+        if i >= len(data_list):
+            print(f"[ICON-EU ALL] ⚠ Няма данни за {icao}")
+            continue
+        try:
+            data    = data_list[i]
+            hourly  = data["hourly"]
+            times   = hourly["time"]
+            elev    = coords["elev"]
+
+            # Helper за 2D ensemble данни
+            def _get(field, ti):
+                val = hourly.get(field)
+                if val is None:
+                    return None
+                if isinstance(val[0], list):
+                    return val[0][ti] if ti < len(val[0]) else None
+                return val[ti] if ti < len(val) else None
+
+            # Намери текущия час
+            now_utc = datetime.now(timezone.utc)
+            now_str = now_utc.strftime("%Y-%m-%dT%H:00")
+            try:
+                t0_idx = times.index(now_str)
+            except ValueError:
+                t0_idx = 0
+
+            valid_time = times[t0_idx]
+            hour0      = int(valid_time[11:13]) + int(valid_time[14:16]) / 60.0
+
+            # Извличаме профила
+            z_l, T_l, p_l, u_l, v_l, qv_l = [], [], [], [], [], []
+            sfc_p = _get("surface_pressure", t0_idx) or 1013.25
+
+            for lev in PRESSURE_LEVELS:
+                if lev > sfc_p + 5:
+                    continue
+                T_C = _get(f"temperature_{lev}hPa",        t0_idx)
+                rh  = _get(f"relativehumidity_{lev}hPa",   t0_idx)
+                z_m = _get(f"geopotential_height_{lev}hPa", t0_idx)
+                ws  = _get(f"windspeed_{lev}hPa",          t0_idx)
+                wd  = _get(f"winddirection_{lev}hPa",      t0_idx)
+                if None in (T_C, rh, z_m):
+                    continue
+                T_K  = float(T_C) + 273.15
+                rh_f = np.clip(float(rh)/100., 0., 1.)
+                p_Pa = lev * 100.
+                es   = 611.2 * np.exp(17.67*(T_K-273.15)/(T_K-273.15+243.5))
+                qv   = max(eps_r * rh_f * es / (p_Pa - rh_f*es), 1e-8)
+                ws_ms = float(ws or 0) * (1000/3600)
+                wd_f  = float(wd or 0)
+                z_agl = max(float(z_m) - elev, 2.)
+                z_l.append(z_agl); T_l.append(T_K); p_l.append(p_Pa)
+                qv_l.append(qv)
+                u_l.append(-ws_ms * np.sin(np.deg2rad(wd_f)))
+                v_l.append(-ws_ms * np.cos(np.deg2rad(wd_f)))
+
+            if len(z_l) < 3:
+                print(f"[ICON-EU ALL] ⚠ {icao}: само {len(z_l)} нива")
+                continue
+
+            idx = np.argsort(z_l)
+            z   = np.array(z_l)[idx]; T   = np.array(T_l)[idx]
+            qv  = np.array(qv_l)[idx]; p   = np.array(p_l)[idx]
+            u   = np.array(u_l)[idx];  v   = np.array(v_l)[idx]
+
+            # Приземна корекция
+            T2m  = _get("temperature_2m",    t0_idx)
+            Td2m = _get("dewpoint_2m",       t0_idx)
+            ws10 = _get("windspeed_10m",     t0_idx)
+            wd10 = _get("winddirection_10m", t0_idx)
+
+            if T2m is not None:
+                w = np.exp(-z/80.); T += (float(T2m)+273.15 - T[0]) * w
+            if Td2m is not None:
+                es_td = 611.2*np.exp(17.67*float(Td2m)/(float(Td2m)+243.5))
+                qv0   = eps_r*es_td/(p[0]-es_td)
+                w = np.exp(-z/80.); qv += (qv0-qv[0])*w; qv = np.maximum(qv, 1e-8)
+            if ws10 is not None and wd10 is not None:
+                ws_ms = float(ws10)*(1000/3600)
+                u10 = -ws_ms*np.sin(np.deg2rad(float(wd10)))
+                v10 = -ws_ms*np.cos(np.deg2rad(float(wd10)))
+                w = np.exp(-z/100.); u += (u10-u[0])*w; v += (v10-v[0])*w
+
+            # Hourly профили за nudging
+            hourly_profiles = []
+            for ti in range(t0_idx, min(t0_idx+forecast_hours+1, len(times))):
+                def _get_ti(field, ti=ti):
+                    val = hourly.get(field)
+                    if val is None: return None
+                    if isinstance(val[0], list): return val[0][ti] if ti < len(val[0]) else None
+                    return val[ti] if ti < len(val) else None
+                z_l2,T_l2,p_l2,u_l2,v_l2,qv_l2 = [],[],[],[],[],[]
+                sfc_p_t = _get_ti("surface_pressure") or 1013.25
+                for lev in PRESSURE_LEVELS:
+                    if lev > sfc_p_t + 5: continue
+                    T_C2 = _get_ti(f"temperature_{lev}hPa")
+                    rh2  = _get_ti(f"relativehumidity_{lev}hPa")
+                    z_m2 = _get_ti(f"geopotential_height_{lev}hPa")
+                    ws2  = _get_ti(f"windspeed_{lev}hPa")
+                    wd2  = _get_ti(f"winddirection_{lev}hPa")
+                    if None in (T_C2, rh2, z_m2): continue
+                    T_K2 = float(T_C2)+273.15; rh_f2 = np.clip(float(rh2)/100.,0.,1.)
+                    p_Pa2 = lev*100.
+                    es2 = 611.2*np.exp(17.67*(T_K2-273.15)/(T_K2-273.15+243.5))
+                    qv2 = max(eps_r*rh_f2*es2/(p_Pa2-rh_f2*es2), 1e-8)
+                    ws_ms2 = float(ws2 or 0)*(1000/3600); wd_f2 = float(wd2 or 0)
+                    z_agl2 = max(float(z_m2)-elev, 2.)
+                    z_l2.append(z_agl2); T_l2.append(T_K2); p_l2.append(p_Pa2)
+                    qv_l2.append(qv2)
+                    u_l2.append(-ws_ms2*np.sin(np.deg2rad(wd_f2)))
+                    v_l2.append(-ws_ms2*np.cos(np.deg2rad(wd_f2)))
+                if len(z_l2) >= 3:
+                    idx2 = np.argsort(z_l2)
+                    hourly_profiles.append({
+                        "time": times[ti],
+                        "z": np.array(z_l2)[idx2], "T": np.array(T_l2)[idx2],
+                        "qv": np.array(qv_l2)[idx2], "p": np.array(p_l2)[idx2],
+                        "u": np.array(u_l2)[idx2],  "v": np.array(v_l2)[idx2],
+                    })
+
+            print(f"[ICON-EU ALL] {icao}: {len(z)} нива  T[0]={T[0]-273.15:.1f}°C")
+            results[icao] = {
+                "z": z, "T": T, "qv": qv, "p": p, "u": u, "v": v,
+                "hour0": hour0, "valid_time": valid_time, "icao": icao,
+                "hourly_profiles": hourly_profiles,
+            }
+        except Exception as e:
+            print(f"[ICON-EU ALL] ⚠ {icao}: {e}")
+
+    return results
