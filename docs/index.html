@@ -5,19 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="3600">
   <title>Airport Fog Nowcasting</title>
+  <style>
+    #content { display: none; }
+    #login-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: #0d1b2a; display: flex; align-items: center;
+      justify-content: center; z-index: 9999;
+    }
+    #login-box {
+      background: #1a3a5a; padding: 40px; border-radius: 10px;
+      text-align: center; min-width: 300px;
+      border: 1px solid #2a5a8a;
+    }
+    #login-box h2 { color: #4fc3f7; margin-bottom: 24px; font-family: Arial; }
+    #login-box input {
+      width: 100%; padding: 10px; margin-bottom: 16px;
+      background: #0d1b2a; border: 1px solid #2a5a8a;
+      color: #c8d8e8; border-radius: 5px; font-size: 16px;
+      box-sizing: border-box;
+    }
+    #login-box button {
+      width: 100%; padding: 10px; background: #2e75b6;
+      color: white; border: none; border-radius: 5px;
+      font-size: 16px; cursor: pointer;
+    }
+    #login-box button:hover { background: #4fc3f7; color: #0d1b2a; }
+    #login-error { color: #ff4444; font-size: 13px; margin-top: 10px; display: none; }
+  </style>
   <script>
-    (function() {
-      var pwd = sessionStorage.getItem('fog_auth');
-      if (pwd !== 'nowcast2026') {
-        pwd = prompt('Password:');
-        if (pwd !== 'nowcast2026') {
-          document.write('<h2 style="color:red;font-family:Arial;text-align:center;margin-top:40vh">Access denied.</h2>');
-          document.close();
-          return;
-        }
-        sessionStorage.setItem('fog_auth', pwd);
+    function checkAuth() {
+      if (sessionStorage.getItem('fog_auth') === 'ok') {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
       }
-    })();
+    }
+    function doLogin() {
+      var pwd = document.getElementById('pwd-input').value;
+      if (pwd === 'nowcast2026') {
+        sessionStorage.setItem('fog_auth', 'ok');
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } else {
+        document.getElementById('login-error').style.display = 'block';
+        document.getElementById('pwd-input').value = '';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      checkAuth();
+      document.getElementById('pwd-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') doLogin();
+      });
+    });
   </script>
   <style>
     body {
@@ -65,8 +103,18 @@
 </head>
 <body>
 
+<div id="login-overlay">
+  <div id="login-box">
+    <h2>Airport Fog Nowcasting</h2>
+    <input type="password" id="pwd-input" placeholder="Password" autofocus>
+    <button onclick="doLogin()">Login</button>
+    <div id="login-error">Incorrect password</div>
+  </div>
+</div>
+
+<div id="content">
 <h1>Airport Fog Nowcasting</h1>
-<div class="run-time">Последен рун: 2026-07-05 11:40 UTC | Следващ: автоматично след 1 час</div>
+<div class="run-time">Последен рун: 2026-07-05 11:46 UTC | Следващ: автоматично след 1 час</div>
 
 <div class="legend">
   <div class="legend-item">
@@ -560,5 +608,6 @@
   Данни: ICON-EU (Open-Meteo) + METAR (OGIMET)
 </div>
 
+</div>
 </body>
 </html>
