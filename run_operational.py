@@ -288,7 +288,21 @@ def build_html(payload):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="3600">
-  <title>ДП РВД — Прогноза мъгла</title>
+  <title>Airport Fog Nowcasting</title>
+  <script>
+    (function() {{
+      var pwd = sessionStorage.getItem('fog_auth');
+      if (pwd !== 'nowcast2026') {{
+        pwd = prompt('Password:');
+        if (pwd !== 'nowcast2026') {{
+          document.write('<h2 style="color:red;font-family:Arial;text-align:center;margin-top:40vh">Access denied.</h2>');
+          document.close();
+          return;
+        }}
+        sessionStorage.setItem('fog_auth', pwd);
+      }}
+    }})();
+  </script>
   <style>
     body {{
       background: #0d1b2a;
