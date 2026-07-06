@@ -91,6 +91,11 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
     current_regime = regime
     current_tau    = tau
+    pending_regime = None
+    pending_count  = 0
+
+    from fog_model import _sin_elevation
+    import io as _io, sys as _sys2
 
     for step in range(1, steps_total + 1):
         model.step()
@@ -100,35 +105,41 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
         # Hourly reassessment
         if step % steps_per_hr == 0 and hourly_profs:
+            hour_now  = (float(profile["hour0"]) + hour_elapsed) % 24
+            hour_next = (hour_now + 1) % 24
+            sin_el      = _sin_elevation(hour_now,  doy)
+            sin_el_next = _sin_elevation(hour_next, doy)
+            is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
+
             remaining = hourly_profs[prof_idx:]
             if len(remaining) < 3:
                 remaining = hourly_profs[-3:]
-            import io, sys as _sys
-            _old_stdout = _sys.stdout
-            _sys.stdout = io.StringIO()
-            new_regime, new_tau, _ = diagnose_regime(
+            _old_out = _sys2.stdout
+            _sys2.stdout = _io.StringIO()
+            cand_regime, cand_tau, _ = diagnose_regime(
                 {"hourly_profiles": remaining}, {}, cfg)
-            _sys.stdout = _old_stdout
-
-            from fog_model import _sin_elevation
-            hour_now = (float(profile["hour0"]) + hour_elapsed) % 24
-            sin_el = _sin_elevation(hour_now, doy)
-
-            hour_next = (hour_now + 1) % 24
-            sin_el_next = _sin_elevation(hour_next, doy)
-            is_sunrise = sin_el > 0.05 and sin_el_next > sin_el
+            _sys2.stdout = _old_out
 
             if is_sunrise and current_regime == "radiative":
-                new_regime = "dynamic"
-                new_tau    = 7200
+                cand_regime = "dynamic"
+                cand_tau    = 7200
+            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunrise:
+                cand_regime = "dynamic"
+                cand_tau    = current_tau
 
-            if current_regime == "dynamic" and new_regime == "radiative":
-                if is_sunrise:
-                    new_regime = "dynamic"
-                    new_tau    = current_tau
+            if cand_regime != current_regime:
+                pending_regime = cand_regime if cand_regime == pending_regime else cand_regime
+                pending_count  = pending_count + 1 if cand_regime == pending_regime else 1
+                threshold = 1 if is_sunrise else 2
+                if pending_count >= threshold:
+                    current_regime = cand_regime
+                    current_tau    = cand_tau
+                    pending_regime = None
+                    pending_count  = 0
+            else:
+                pending_regime = None
+                pending_count  = 0
 
-            current_regime = new_regime
-            current_tau    = new_tau
 
         if current_tau and hourly_profs:
             apply_nudging(model, hourly_profs[prof_idx], cfg["tau_T"], current_tau)

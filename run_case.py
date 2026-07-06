@@ -667,6 +667,11 @@ def run_case(icao: str, date_str: str, hour0: int,
     # Текущ режим и tau — ще се преоценяват hourly
     current_regime = regime
     current_tau    = tau
+    pending_regime = None   # кандидат за смяна (трябва 2 последователни часа)
+    pending_count  = 0      # брой последователни часа с новия режим
+
+    from fog_model import _sin_elevation
+    import io, sys as _sys
 
     for step in range(1, steps_total + 1):
         model.step()
@@ -676,50 +681,62 @@ def run_case(icao: str, date_str: str, hour0: int,
 
         # ── Hourly reassessment на режима ──────────────────────────────
         if step % steps_per_hr == 0 and hourly_profs:
-            # Минимум 3 профила напред за надеждна диагноза
+            hour_now  = (float(hour0) + hour_elapsed) % 24
+            hour_next = (hour_now + 1) % 24
+            sin_el      = _sin_elevation(hour_now,  doy)
+            sin_el_next = _sin_elevation(hour_next, doy)
+            is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
+            is_sunset   = sin_el > 0.05 and sin_el_next < sin_el
+
+            # Диагностика от ICON профилите напред
             remaining_profs = hourly_profs[prof_idx:]
             if len(remaining_profs) < 3:
-                remaining_profs = hourly_profs[-3:]  # последните 3 ако няма повече
-            # Временно заглушаваме print от diagnose_regime
-            import io, sys as _sys
+                remaining_profs = hourly_profs[-3:]
             _old_stdout = _sys.stdout
             _sys.stdout = io.StringIO()
-            new_regime, new_tau, new_reason = diagnose_regime(
-                {"hourly_profiles": remaining_profs},
-                metar_dict, cfg
-            )
+            cand_regime, cand_tau, cand_reason = diagnose_regime(
+                {"hourly_profiles": remaining_profs}, metar_dict, cfg)
             _sys.stdout = _old_stdout
 
-            # Слънцето е изгряло → принудително nudging за T
-            # (моделът не може да смята SW загряването правилно без NWP)
-            from fog_model import _sin_elevation
-            hour_now = (float(hour0) + hour_elapsed) % 24
-            sin_el = _sin_elevation(hour_now, doy)
-
-            # Различаваме изгрев от залез:
-            # при изгрев sin_el нараства, при залез намалява
-            hour_next = (hour_now + 1) % 24
-            sin_el_next = _sin_elevation(hour_next, doy)
-            is_sunrise = sin_el > 0.05 and sin_el_next > sin_el
-
+            # ── Специални правила за изгрев/залез ──
+            # Изгрев → RADIATIVE → DYNAMIC (веднага, без изчакване)
             if is_sunrise and current_regime == "radiative":
-                # Изгрев — включваме плавен nudging за T
-                new_regime = "dynamic"
-                new_tau    = 7200   # τ=2h — плавен, не рязък
-                new_reason = f"Изгрев (sin_el={sin_el:.2f}↑) → nudging T τ=2h"
+                cand_regime = "dynamic"
+                cand_tau    = 7200
+                cand_reason = f"Изгрев (sin_el={sin_el:.2f}↑) → nudging T τ=2h"
 
-            # След изгрев не се връщаме към RADIATIVE докато слънцето расте
-            if current_regime == "dynamic" and new_regime == "radiative":
-                if is_sunrise:
-                    new_regime = "dynamic"
-                    new_tau    = current_tau
-                    new_reason = "Изгрев продължава — задържаме DYNAMIC"
+            # При изгрев не се връщаме към RADIATIVE
+            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunrise:
+                cand_regime = "dynamic"
+                cand_tau    = current_tau
+                cand_reason = "Изгрев продължава — задържаме DYNAMIC"
 
-            if new_regime != current_regime:
-                print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "
-                      f"{current_regime.upper()} → {new_regime.upper()} | {new_reason}")
-                current_regime = new_regime
-                current_tau    = new_tau
+            # Залез + тихо → DYNAMIC → RADIATIVE позволено
+            # (при залез вятърът е отслабнал и радиационното охлаждане доминира)
+            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunset:
+                pass   # разрешаваме смяната — продължава към pending логиката
+
+            # ── Правило за 2 последователни часа ──
+            if cand_regime != current_regime:
+                if cand_regime == pending_regime:
+                    pending_count += 1
+                else:
+                    pending_regime = cand_regime
+                    pending_count  = 1
+
+                # Смяна при 2 последователни часа (или веднага при изгрев)
+                threshold = 1 if is_sunrise else 2
+                if pending_count >= threshold:
+                    print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "
+                          f"{current_regime.upper()} → {cand_regime.upper()} | {cand_reason}")
+                    current_regime = cand_regime
+                    current_tau    = cand_tau
+                    pending_regime = None
+                    pending_count  = 0
+            else:
+                # Режимът потвърден — нулираме pending
+                pending_regime = None
+                pending_count  = 0
 
         # ── Nudging с текущия режим ────────────────────────────────────
         if use_nudging and current_tau and hourly_profs:
