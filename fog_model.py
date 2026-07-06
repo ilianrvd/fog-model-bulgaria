@@ -134,40 +134,75 @@ def vis_to_metar_category(vis_m: float) -> str:
 
 def louis_stability_function(Ri: np.ndarray,
                               z: np.ndarray,
+                              S: np.ndarray = None,
                               z0: float = 0.1) -> np.ndarray:
     """
     Функция за устойчивост по Louis (1979).
     Връща K_m [m²/s] за всяко ниво.
+
+    Параметри
+    ----------
+    Ri : bulk Richardson number
+    z  : височина [m]
+    S  : вертикален shear на вятъра |dU/dz| [1/s] — от bulk_richardson_and_shear()
+         Ако None → използва фонов shear 0.01 /s (~ 1 m/s на 100m)
     """
-    kv = 0.4       # константа на фон Карман
-    # Смесващата дължина (опростена)
+    kv = 0.4
     z_safe = np.maximum(z, 0.01)
     l = kv * z_safe / (1.0 + kv * z_safe / 200.0)
 
-    # Ричардсон → функция за устойчивост
+    # Функция за устойчивост fm(Ri) по Louis (1979)
+    # Нестабилен (Ri < 0): fm > 1 → усилена турбуленция
+    # Стабилен  (Ri > 0): fm < 1 → потисната турбуленция → 0 при силна инверсия
     fm = np.where(
         Ri < 0,
         1.0 - 5.0 * Ri / (1.0 + 75.0 * kv**2 * np.sqrt(np.abs(Ri) + 1e-6)),
-        np.maximum((1.0 - 5.0 * Ri) ** 2, 0.01)
+        1.0 / (1.0 + 5.0 * Ri) ** 2     # монотонно намалява: Ri=0→1, Ri=1→0.028
     )
-    # Скорост на срязване (опростена — задаваме фонова ≥ 0.1 m/s)
-    shear_min = 0.1  # m/s/m
-    Km = l ** 2 * shear_min * fm
+    fm = np.clip(fm, 0.0, 5.0)
+
+    # Реален shear |dU/dz| [1/s] с минимален фонов член
+    # Фонов shear 0.01/s ≈ 1 m/s на 100m — при абсолютен покой
+    if S is not None:
+        shear = np.maximum(S, 0.01)
+    else:
+        shear = np.full_like(z, 0.01)
+
+    # Km = l² · |dU/dz| · fm(Ri)  [m²/s]
+    Km = l ** 2 * shear * fm
     return np.clip(Km, 1e-4, 5.0)
 
 
 def bulk_richardson(theta_v: np.ndarray, u: np.ndarray,
                     v: np.ndarray, z: np.ndarray) -> np.ndarray:
-    """Bulk Richardson number между нивата."""
+    """Bulk Richardson number между нивата (backward compatible)."""
+    Ri, _ = bulk_richardson_and_shear(theta_v, u, v, z)
+    return Ri
+
+
+def bulk_richardson_and_shear(theta_v: np.ndarray, u: np.ndarray,
+                               v: np.ndarray, z: np.ndarray) -> tuple:
+    """
+    Bulk Richardson number и вертикален shear |dU/dz| [1/s].
+    Връща: (Ri, S) — двата масива с дължина len(z).
+    """
     Ri = np.zeros_like(z)
+    S  = np.zeros_like(z)
     dz  = np.diff(z)
     dth = np.diff(theta_v)
     du  = np.diff(u)
     dv  = np.diff(v)
     dU2 = du**2 + dv**2 + 1e-6
+
+    # Ri = (g/θ) · (dθ/dz) / (dU/dz)²
     Ri[1:] = (g / theta_v[:-1]) * (dth / dz) * (dz**2) / dU2
     Ri[0]  = Ri[1]
-    return np.clip(Ri, -5.0, 5.0)
+
+    # S = |dU/dz| [1/s]
+    S[1:]  = np.sqrt(dU2) / dz
+    S[0]   = S[1]
+
+    return np.clip(Ri, -5.0, 5.0), S
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -495,8 +530,8 @@ class FogModel1D:
         theta_v  = virtual_potential_temp(theta, qv, ql)
 
         # 2. Richardson → K
-        Ri = bulk_richardson(theta_v, self.u, self.v, self.z)
-        K  = louis_stability_function(Ri, self.z)
+        Ri, S = bulk_richardson_and_shear(theta_v, self.u, self.v, self.z)
+        K     = louis_stability_function(Ri, self.z, S)
 
         # 3. Дифузия
         T_new  = turbulent_diffusion(T,  K, self.rho, self.z, self.dt)
