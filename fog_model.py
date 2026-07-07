@@ -589,15 +589,8 @@ class FogModel1D:
         dT_rad = two_stream_radiation(
             T_new, ql_new, self.z, self.rho, hour_now, self.day_of_year)
 
-        # Физическа горна граница на нощното охлаждане:
-        # Реалната нощна загуба при влажна котловинна нощ е ~0.25 K/hr
-        # при ясно небе. Топлинният флукс от почвата (не моделиран)
-        # допълнително забавя охлаждането.
-        max_cool_rate = 0.35 / 3600.0   # K/s = 0.35 K/hr
-        sin_el = _sin_elevation(hour_now, self.day_of_year)
-        if sin_el < 0.05:   # нощем/здрач
-            dT_rad = np.maximum(dT_rad, -max_cool_rate)
-
+        # К2 resolved: cap премахнат — soil heat flux (Force-Restore) поема
+        # физическото ограничение на охлаждането.
         T_new += dT_rad * self.dt
 
         # 5. Топлинен флукс от почвата (Force-Restore, Deardorff 1978)

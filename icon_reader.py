@@ -397,6 +397,8 @@ def fetch_icon_eu_all(icao_list: list, forecast_hours: int = 13) -> dict:
     url = _ICON_BASE_URL + "?" + urllib.parse.urlencode(params)
     print(f"[ICON-EU ALL] {len(coords_list)} летища, 1 заявка")
     print(f"[ICON-EU ALL] URL: {url[:80]}...")
+    print(f"[ICON-EU ALL] PRESSURE_LEVELS: {PRESSURE_LEVELS}")
+    print(f"[ICON-EU ALL] IS_GITHUB_ACTIONS: {_IS_GITHUB_ACTIONS}")
 
     req = urllib.request.Request(url, headers={
         "User-Agent": "fog-model-dprvd/1.0"
@@ -427,6 +429,20 @@ def fetch_icon_eu_all(icao_list: list, forecast_hours: int = 13) -> dict:
 
     if not isinstance(data_list, list):
         data_list = [data_list]
+
+    # Debug — какви полета са налични
+    if data_list:
+        hourly0 = data_list[0].get("hourly", {})
+        print(f"[DEBUG] Налични hourly полета: {list(hourly0.keys())[:15]}")
+        # Проверяваме geopotential_height за всяко ниво
+        for lev in PRESSURE_LEVELS:
+            key = f"geopotential_height_{lev}hPa"
+            val = hourly0.get(key)
+            if val is not None:
+                v0 = val[0][0] if isinstance(val[0], list) else val[0]
+                print(f"[DEBUG]   {key}: {v0}")
+            else:
+                print(f"[DEBUG]   {key}: ЛИПСВА")
 
     results = {}
     for i, (icao, coords) in enumerate(coords_list):
