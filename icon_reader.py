@@ -101,6 +101,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "windspeed_10m",
         "winddirection_10m",
         "relativehumidity_2m",
+        "soil_temperature_0cm",   # за Force-Restore soil flux
     ]
 
     all_vars = surface_vars + level_vars
@@ -259,6 +260,14 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         u += (u10 - u[0]) * weight
         v += (v10 - v[0]) * weight
 
+    # Почвена температура за soil flux
+    T_soil_0cm = hourly.get("soil_temperature_0cm", [None]*len(times))[t0_idx]
+    if T_soil_0cm is not None:
+        T_soil_K = float(T_soil_0cm) + 273.15
+        print(f"[ICON-EU] T_soil_0cm={T_soil_0cm:.1f}°C")
+    else:
+        T_soil_K = None
+
     print(f"[ICON-EU] Извлечени {len(z)} нива  "
           f"(z={z[0]:.0f}–{z[-1]:.0f} m AGL)")
     print(f"[ICON-EU] T[0]={T[0]-273.15:.1f}°C  "
@@ -283,6 +292,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "valid_time"      : valid_time,
         "icao"            : icao,
         "hourly_profiles" : hourly_profiles,   # за nudging
+        "T_soil"          : T_soil_K,          # за Force-Restore soil flux
     }
 
 

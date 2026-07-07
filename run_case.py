@@ -71,6 +71,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
     surface_vars = [
         "temperature_2m", "dewpoint_2m", "surface_pressure",
         "windspeed_10m",  "winddirection_10m", "relativehumidity_2m",
+        "soil_temperature_0cm",   # за Force-Restore soil flux
     ]
 
     # Крайна дата (може да е следващия ден)
@@ -159,6 +160,12 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         u += (u10 - u[0]) * w
         v += (v10 - v[0]) * w
 
+    # Почвена температура
+    T_soil_val = hourly.get("soil_temperature_0cm", [None]*len(times))[t0_idx]
+    T_soil_K   = (float(T_soil_val) + 273.15) if T_soil_val is not None else None
+    if T_soil_K:
+        print(f"[ICON-EU HIST] T_soil_0cm={T_soil_val:.1f}°C")
+
     print(f"[ICON-EU HIST] {len(z)} нива  T[0]={T[0]-273.15:.1f}°C  "
           f"qv[0]={qv[0]*1000:.2f} g/kg  p[0]={p[0]/100:.0f} hPa")
 
@@ -197,6 +204,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         "valid_time"      : t0_str,
         "icao"            : icao,
         "hourly_profiles" : hourly_profiles,
+        "T_soil"          : T_soil_K,
     }
 
 
@@ -404,21 +412,20 @@ def diagnose_regime(profile: dict, metar: dict, cfg: dict) -> tuple:
     dT850, dV_wind, dT_col, dqv = compute_forecast_changes(hourly, hours=6)
 
     print(f"[РЕЖИМ] Сигнали: ΔT850={dT850:.1f}K  ΔV={dV_wind:.1f}m/s  "
-          f"ΔT_col={dT_col:.1f}K  Δqv={dqv:.1f}g/kg  V_sfc={V_sfc:.1f}m/s")
+          f"V_sfc={V_sfc:.1f}m/s")
 
-    # ── Силни сигнали → DYNAMIC τ=1h ──
-    # Надеждни индикатори за адвекция: T850 и вятър.
-    # ΔT_col и Δqv се изключват — отразяват дневния ход, не адвекция.
+    # ── Синоптични сигнали → DYNAMIC ──
+    # Само T850 и вятър — надеждни индикатори за синоптична промяна.
 
     # Текущ силен вятър → радиационна мъгла е невъзможна
     if V_sfc > 4.0:
         return "dynamic", 10800, f"Текущ V={V_sfc:.1f}m/s > 4m/s → радиационна мъгла невъзможна"
 
-    # Прогнозна промяна на T850 → нова въздушна маса идва
+    # Адвекция на въздушна маса на 850 hPa
     if dT850 > 2.0:
         return "dynamic", 3600, f"ΔT850={dT850:.1f}K > 2K → адвекция на въздушна маса"
 
-    # Прогнозно засилване на вятъра → ще разбие инверсията
+    # Засилване на вятъра → ще разбие инверсията
     if dV_wind > 5.0:
         return "dynamic", 3600, f"ΔV={dV_wind:.1f}m/s > 5m/s → засилване на вятъра"
 
@@ -498,16 +505,29 @@ def build_surface_layer(profile: dict, metar: dict, doy: int) -> dict:
     is_night = (hour >= 18 or hour <= 8)
 
     # Вертикален температурен градиент в приземния слой
-    if is_night:
-        # Радиационна инверсия: T нараства с z (стабилно)
-        dT_dz = +3.0 / 1000.0   # +3 K/km = +0.3 K/100m
+    # Приоритет: изчисляваме от METAR (2m) и първото ICON ниво
+    # Това улавя реалната инверсия вместо да предполагаме фиксирана
+    z_icon_0 = float(profile["z"][0]) if len(profile["z"]) > 0 else 200.0
+    T_icon_0 = float(profile["T"][0]) if len(profile["T"]) > 0 else T_sfc + 2.0
+
+    if z_icon_0 > 10.0:
+        # Реален градиент от METAR до първото ICON ниво
+        dT_dz_real = (T_icon_0 - T_sfc) / z_icon_0   # K/m
+        # Физически граници: -10 K/km (суперадиабат) до +30 K/km (силна инверсия)
+        dT_dz = float(np.clip(dT_dz_real, -10.0/1000.0, 30.0/1000.0))
+        source = f"METAR→ICON ({z_icon_0:.0f}m): {dT_dz*1000:.1f} K/km"
     else:
-        # Дневен — неутрален/слабо конвективен
-        dT_dz = -6.5 / 1000.0   # -6.5 K/km (мокър адиабат)
+        # Fallback при липса на ICON нива
+        if is_night:
+            dT_dz = +3.0 / 1000.0
+        else:
+            dT_dz = -6.5 / 1000.0
+        source = "фиксиран fallback"
 
     # Строим нива 2-300m с 10m стъпка
     z_sfc   = np.arange(2, 302, 10, dtype=float)   # 30 нива
     T_sfc_v = T_sfc + dT_dz * z_sfc                # линеен профил в долния слой
+    print(f"[SFC LAYER] dT/dz={dT_dz*1000:+.1f} K/km  ({source})")
 
     # qv от Td (приземно), намалява с височина
     es_sfc  = sat_vapor_pressure(Td_sfc)
@@ -632,6 +652,16 @@ def run_case(icao: str, date_str: str, hour0: int,
 
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour0), dt=dt, day_of_year=doy)
+
+    # Инициализираме почвените температури от ICON
+    T_soil_icon = profile.get("T_soil")
+    if T_soil_icon is not None:
+        model.T_soil      = float(T_soil_icon)
+        model.T_soil_deep = float(T_soil_icon)
+        print(f"[SOIL] T_soil от ICON: {T_soil_icon-273.15:.1f}°C  "
+              f"(T_air={T_m[0]-273.15:.1f}°C  ΔT={T_m[0]-T_soil_icon:+.1f}K)")
+    else:
+        print(f"[SOIL] T_soil не е налична — използваме T_air")
     # ql_init може да има различна дължина от profile["z"] след build_surface_layer
     # Затова го нулираме и прилагаме само ако има мъгла в METAR
     ql_init_raw = profile.get("ql_init", None)

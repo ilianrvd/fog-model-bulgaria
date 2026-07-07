@@ -77,6 +77,11 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=profile["hour0"], dt=dt, day_of_year=doy)
 
+    T_soil_icon = profile.get("T_soil")
+    if T_soil_icon is not None:
+        model.T_soil      = float(T_soil_icon)
+        model.T_soil_deep = float(T_soil_icon)
+
     ql_init_raw = profile.get("ql_init", None)
     if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
         model.ql = np.interp(z_model, profile["z"], ql_init_raw)

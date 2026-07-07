@@ -49,6 +49,14 @@ r_eff_min = 2e-6    # m    - минимален ефективен радиус
 r_eff_max = 20e-6   # m    - максимален ефективен радиус
 beta_vis  = 144.7   # коефициент видимост-LWC (Kunkel 1984)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Параметри на почвата (Force-Restore схема, Deardorff 1978)
+# ──────────────────────────────────────────────────────────────────────────────
+C_soil  = 1.2e6      # J/m³/K  — топлинен капацитет на почвата
+Lambda  = 0.5        # W/m/K   — топлопроводимост (суха почва)
+d_soil  = 0.10       # m       — дебелина на повърхностния слой
+omega_d = 2*np.pi/86400.0  # rad/s — дневна честота
+
 # Радиационни параметри
 emiss_air = 0.85    # средна излъчвателна способност на въздуха
 emiss_fog = 1.0     # мъглата е почти черно тяло в IR
@@ -469,6 +477,38 @@ def _thomas(a, b, c, d):
 # Основен клас: FogModel1D
 # ──────────────────────────────────────────────────────────────────────────────
 
+def soil_heat_flux(T_air: float, T_soil: float,
+                   T_soil_deep: float, dt: float) -> tuple:
+    """
+    Force-Restore схема за топлинен флукс от почвата (Deardorff 1978).
+
+    Две прогностични T на почвата:
+      T_soil      — повърхностен слой (~10cm), бързо реагира
+      T_soil_deep — дълбок слой (~1m), дневна инерция
+
+    Флукс към въздуха [W/m²]: G = Lambda * (T_soil - T_air) / d_soil
+    Положителен = топлина от почвата към въздуха (нощем)
+    Отрицателен = охлаждане на въздуха от студена почва (зима)
+
+    Връща: (G, T_soil_new, T_soil_deep_new)
+    """
+    # Топлинен флукс от повърхностния слой към въздуха
+    G = Lambda * (T_soil - T_air) / d_soil   # W/m²
+
+    # Force-Restore уравнения
+    # dT_soil/dt = -G/C_soil_layer - omega*(T_soil - T_soil_deep)
+    C_layer = C_soil * d_soil   # J/m²/K
+
+    dT_soil  = dt * (-G / C_layer - omega_d * (T_soil - T_soil_deep))
+    # Дълбокият слой — бавна дневна вълна
+    dT_deep  = dt * (-omega_d / (2*np.pi) * (T_soil_deep - T_soil))
+
+    T_soil_new      = T_soil      + dT_soil
+    T_soil_deep_new = T_soil_deep + dT_deep
+
+    return G, T_soil_new, T_soil_deep_new
+
+
 class FogModel1D:
     """
     Едномерен физически модел за мъгла, базиран на PAFOG.
@@ -511,6 +551,11 @@ class FogModel1D:
             self.day_of_year = datetime.now(timezone.utc).timetuple().tm_yday
         else:
             self.day_of_year = int(day_of_year)
+
+        # Почвени температури (Force-Restore)
+        # Инициализираме от приземната T на модела
+        self.T_soil      = float(T[0])   # повърхностен слой
+        self.T_soil_deep = float(T[0])   # дълбок слой — дневна инерция
 
         # Диагностика
         self.history = []  # списък с dict за всеки изходен час
@@ -555,7 +600,16 @@ class FogModel1D:
 
         T_new += dT_rad * self.dt
 
-        # 5. Микрофизика
+        # 5. Топлинен флукс от почвата (Force-Restore, Deardorff 1978)
+        G, self.T_soil, self.T_soil_deep = soil_heat_flux(
+            float(T_new[0]), self.T_soil, self.T_soil_deep, self.dt)
+        # Прилагаме флукса само към приземното ниво
+        # dT = G / (rho * cp * dz_sfc)
+        dz_sfc = float(self.z[1] - self.z[0]) if len(self.z) > 1 else 10.0
+        dT_soil_flux = G * self.dt / (self.rho[0] * cp * dz_sfc)
+        T_new[0] += dT_soil_flux
+
+        # 6. Микрофизика
         dqv, dql, dT_mic = microphysics(qv_new, ql_new, T_new, self.p, self.rho, self.dt)
         qv_new += dqv
         ql_new += dql
