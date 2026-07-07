@@ -39,8 +39,8 @@ AIRPORT_COORDS = {
 import os as _os
 _IS_GITHUB_ACTIONS = _os.getenv("GITHUB_ACTIONS") == "true"
 if _IS_GITHUB_ACTIONS:
-    _ICON_BASE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
-    print("[ICON-EU] Среда: GitHub Actions → ensemble-api")
+    _ICON_BASE_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    print("[ICON-EU] Среда: GitHub Actions → historical-forecast-api")
 else:
     _ICON_BASE_URL = "https://api.open-meteo.com/v1/dwd-icon"
 
@@ -117,6 +117,13 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
 
     # URL зависи от средата
     params["models"] = "icon_eu"
+    if _IS_GITHUB_ACTIONS:
+        # historical-forecast-api изисква start_date/end_date
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        today    = _dt.now(_tz.utc).strftime("%Y-%m-%d")
+        tomorrow = (_dt.now(_tz.utc) + _td(days=1)).strftime("%Y-%m-%d")
+        params["start_date"] = today
+        params["end_date"]   = tomorrow
     url = _ICON_BASE_URL + "?" + urllib.parse.urlencode(params)
 
     print(f"[ICON-EU] Изтегляне на профил за {icao} ({coords['name']})...")
@@ -309,7 +316,7 @@ def _extract_profile_at(hourly, times, ti, levels, elev):
         z_m = hourly.get(f"geopotential_height_{lev}hPa",[None]*len(times))[ti]
         ws  = hourly.get(f"windspeed_{lev}hPa",        [None]*len(times))[ti]
         wd  = hourly.get(f"winddirection_{lev}hPa",    [None]*len(times))[ti]
-        if None in (T_C, rh, z_m):
+        if None in (T_C, rh):
             continue
         T_K  = float(T_C) + 273.15
         rh_f = float(rh) / 100.0
@@ -397,8 +404,6 @@ def fetch_icon_eu_all(icao_list: list, forecast_hours: int = 13) -> dict:
     url = _ICON_BASE_URL + "?" + urllib.parse.urlencode(params)
     print(f"[ICON-EU ALL] {len(coords_list)} летища, 1 заявка")
     print(f"[ICON-EU ALL] URL: {url[:80]}...")
-    print(f"[ICON-EU ALL] PRESSURE_LEVELS: {PRESSURE_LEVELS}")
-    print(f"[ICON-EU ALL] IS_GITHUB_ACTIONS: {_IS_GITHUB_ACTIONS}")
 
     req = urllib.request.Request(url, headers={
         "User-Agent": "fog-model-dprvd/1.0"
