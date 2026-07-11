@@ -697,7 +697,8 @@ class FogModel1D:
         self.e = np.maximum((Cm * _l_init * np.maximum(_S_init, 0.01))**2 / Ce, e_min)
 
         # Диагностика
-        self.history = []  # списък с dict за всеки изходен час
+        self.history  = []     # списък с dict за всеки изходен час
+        self._log_qv  = False  # активира се от run_case при нужда
 
     # ─────────────────────────────────────────────
     # Стъпка напред
@@ -775,6 +776,17 @@ class FogModel1D:
         # Роса: изважда влага от приземното ниво
         qv_new[0] -= E_dew * self.dt / (self.rho[0] * DZ_EFF_SEB)
         qv_new[0] = max(qv_new[0], 1e-8)
+
+        # Saturated surface condition (Teixeira & Miranda 1999)
+        # При T_skin < Td на въздуха → повърхността е наситена
+        # qv[0] се "закача" на насищане спрямо T_skin
+        # Това имитира влажностна адвекция от по-влажни части на котловината
+        _es_skin  = sat_vapor_pressure(np.array([self.T_skin]))[0]
+        _qsat_sfc = eps_r * _es_skin / (self.p[0] - _es_skin)
+        if qv_new[0] < _qsat_sfc and self.T_skin < self.T[0]:
+            # Повърхността е наситена и по-студена от въздуха
+            # → qv[0] се вдига до насищане
+            qv_new[0] = _qsat_sfc
 
         # 6. Микрофизика
         dqv, dql, dT_mic = microphysics(qv_new, ql_new, T_new, self.p, self.rho, self.dt)
