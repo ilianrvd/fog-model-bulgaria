@@ -67,7 +67,12 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
     regime, tau, reason = diagnose_regime(profile, metar_dict, cfg)
 
-    z_model = np.linspace(2., 2000., 40)
+    # Р2: Логаритмична вертикална мрежа (Tardif 2007)
+    # Фина при земята (Δz~0.14m @ z=0.5m), груба горе (Δz~100m @ z=2000m)
+    # Критично за приземното охлаждане и образуването на мъгла
+    z_log   = np.logspace(np.log10(0.5), np.log10(50), 20)
+    z_lin   = np.linspace(55, 2000, 20)
+    z_model = np.concatenate([z_log, z_lin])
     T_m  = np.interp(z_model, profile["z"], profile["T"])
     qv_m = np.interp(z_model, profile["z"], profile["qv"])
     p_m  = np.interp(z_model, profile["z"], profile["p"])
@@ -79,8 +84,9 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
-        model.T_soil      = float(T_soil_icon)
-        model.T_soil_deep = float(T_soil_icon)
+        model.T_soil = float(T_soil_icon)
+        model.T_skin = float(T_soil_icon)   # старт: повърхността ≈ почвата
+        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
 
     ql_init_raw = profile.get("ql_init", None)
     if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):

@@ -421,9 +421,33 @@ def diagnose_regime(profile: dict, metar: dict, cfg: dict) -> tuple:
     if V_sfc > 4.0:
         return "dynamic", 10800, f"Текущ V={V_sfc:.1f}m/s > 4m/s → радиационна мъгла невъзможна"
 
-    # Адвекция на въздушна маса на 850 hPa
-    if dT850 > 2.0:
+    # Р3: Decoupling gate — при силна котловинна инверсия ΔT850 не стига долу
+    # Инверсията изолира котловината от свободната атмосфера
+    # Използваме profile["T"] и profile["z"] — оригиналните ICON нива (преди build_surface_layer)
+    inversion_strength = 0.0
+    if metar.get("T") is not None:
+        T_sfc_metar = float(metar["T"]) + 273.15
+        # Вземаме T и z на второто ICON ниво (z[1]) — след build_surface_layer z[0]=2m
+        # Търсим ниво над 50m AGL за надежден инверсионен сигнал
+        prof_z = profile.get("z", [])
+        prof_T = profile.get("T", [])
+        # Търсим първото ниво между 100-300m AGL — там инверсията е най-видима
+        for iz in range(len(prof_z)):
+            if float(prof_z[iz]) > 100.0:
+                z_icon_0 = float(prof_z[iz])
+                T_icon_0 = float(prof_T[iz])
+                inversion_strength = (T_icon_0 - T_sfc_metar) / z_icon_0 * 100  # K/100m
+                print(f"[DECOUPLING] T_sfc={T_sfc_metar-273.15:.1f}°C  T_icon={T_icon_0-273.15:.1f}°C  z={z_icon_0:.0f}m  inv={inversion_strength:.1f}K/100m")
+                break
+
+    # Ако инверсията е силна (>2K/100m) и вятърът е тих — котловината е откачена
+    decoupled = (inversion_strength > 1.0 and V_sfc < 3.0)
+
+    # Адвекция на въздушна маса на 850 hPa — само ако не е decoupled
+    if dT850 > 2.0 and not decoupled:
         return "dynamic", 3600, f"ΔT850={dT850:.1f}K > 2K → адвекция на въздушна маса"
+    elif dT850 > 2.0 and decoupled:
+        print(f"[РЕЖИМ] ΔT850={dT850:.1f}K но инверсия {inversion_strength:.1f}K/100m + V={V_sfc:.1f}m/s → котловината е откачена, RADIATIVE")
 
     # Засилване на вятъра → ще разбие инверсията
     if dV_wind > 5.0:
@@ -643,7 +667,12 @@ def run_case(icao: str, date_str: str, hour0: int,
     profile = build_surface_layer(profile, metar_dict, doy)
 
     # 5. Инициализация на модела
-    z_model = np.linspace(2., 2000., 40)
+    # Р2: Логаритмична вертикална мрежа (Tardif 2007)
+    # Фина при земята (Δz~0.14m @ z=0.5m), груба горе (Δz~100m @ z=2000m)
+    # Критично за приземното охлаждане и образуването на мъгла
+    z_log   = np.logspace(np.log10(0.5), np.log10(50), 20)
+    z_lin   = np.linspace(55, 2000, 20)
+    z_model = np.concatenate([z_log, z_lin])
     T_m  = np.interp(z_model, profile["z"], profile["T"])
     qv_m = np.interp(z_model, profile["z"], profile["qv"])
     p_m  = np.interp(z_model, profile["z"], profile["p"])
@@ -656,8 +685,9 @@ def run_case(icao: str, date_str: str, hour0: int,
     # Инициализираме почвените температури от ICON
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
-        model.T_soil      = float(T_soil_icon)
-        model.T_soil_deep = float(T_soil_icon)
+        model.T_soil = float(T_soil_icon)
+        model.T_skin = float(T_soil_icon)   # старт: повърхността ≈ почвата
+        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
         print(f"[SOIL] T_soil от ICON: {T_soil_icon-273.15:.1f}°C  "
               f"(T_air={T_m[0]-273.15:.1f}°C  ΔT={T_m[0]-T_soil_icon:+.1f}K)")
     else:

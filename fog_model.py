@@ -186,6 +186,146 @@ def bulk_richardson(theta_v: np.ndarray, u: np.ndarray,
     """Bulk Richardson number между нивата (backward compatible)."""
     Ri, _ = bulk_richardson_and_shear(theta_v, u, v, z)
     return Ri
+def solar_sw_down(hour_utc: float, day_of_year: int) -> float:
+    """Късовълнова радиация надолу [W/m²] от слънчевата елевация."""
+    s = _sin_elevation(hour_utc, day_of_year)
+    return 900.0 * max(s, 0.0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Surface Energy Balance (SEB) — прогностична T_skin
+# Дизайн: Fable5 одит 2026-07-10. Литература: Duynkerke (1991), COBEL-ISBA.
+# ──────────────────────────────────────────────────────────────────────────────
+
+C_SKIN   = 2.0e4     # J/m²/K
+C_H_BULK = 1.2e-3    # bulk аеродинамичен коефициент (константа)
+EPS_SFC  = 0.97      # емисивност на повърхността
+ALBEDO   = 0.20      # албедо
+LAMBDA_G = 0.5       # W/m/K
+D_SOIL_G = 0.05      # m
+U_MIN    = 0.3       # m/s
+
+
+def seb_step(T_skin: float, T_soil: float,
+             T_air0: float, qv0: float, p0: float, rho0: float,
+             U0: float, lwp_col: float,
+             sw_down: float, dt: float) -> tuple:
+    """
+    Една стъпка на Surface Energy Balance.
+    Връща: (T_skin_new, H, E_dew)
+      H     : сензибилен поток [W/m²], положителен = повърхност → въздух
+      E_dew : поток на роса [kg/m²/s]
+    """
+    # 1. Парно налягане за Brunt
+    e_Pa  = qv0 * p0 / (eps_r + qv0 * (1 - eps_r))
+    e_hPa = max(e_Pa / 100.0, 0.1)
+
+    # 2. Атмосферна емисивност (Brunt 1932); при мъгла → черно тяло
+    eps_a = 0.52 + 0.065 * np.sqrt(e_hPa)
+    if lwp_col > 0.005:
+        eps_a = 1.0
+    eps_a = min(eps_a, 1.0)
+
+    # 3. Радиационен баланс
+    LW_down = eps_a * sigma * T_air0**4
+    LW_up   = EPS_SFC * sigma * T_skin**4
+    R_net   = LW_down - LW_up + (1.0 - ALBEDO) * sw_down
+
+    # 4. Сензибилен поток (+: от повърхността към въздуха)
+    U_eff = max(U0, U_MIN)
+    H = rho0 * cp * C_H_BULK * U_eff * (T_skin - T_air0)
+
+    # 5. Почвен флукс (+: от почвата към повърхността)
+    G = LAMBDA_G * (T_soil - T_skin) / D_SOIL_G
+
+    # 6. Роса: кондензация върху повърхността при T_skin < Td
+    es_skin   = sat_vapor_pressure(np.array([T_skin]))[0]
+    qsat_skin = eps_r * es_skin / (p0 - es_skin)
+    E_dew = max(rho0 * C_H_BULK * U_eff * (qv0 - qsat_skin), 0.0)
+    LE    = Lv * E_dew
+
+    # 7. Прогностично уравнение
+    dT_skin = dt * (R_net - H + G + LE) / C_SKIN
+    dT_skin = float(np.clip(dT_skin, -2.0, 2.0))   # единствена защита
+
+    return T_skin + dT_skin, H, E_dew
+
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TKE 1.5-order схема (Mellor-Yamada level 2.5, опростена)
+# Литература: Bougeault & Lacarrere (1989), Duynkerke (1991)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# TKE константи
+Cm   = 0.556    # коефициент за Km = Cm * l * sqrt(e)
+Ch   = 0.478    # коефициент за Kh (топлина/влага)
+Ce   = 0.202    # дисипационна константа
+e_min = 1e-5    # минимална TKE [m²/s²]
+l_inf = 150.0   # асимптотична смесваща дължина [m]
+
+
+def tke_mixing_length(z: np.ndarray) -> np.ndarray:
+    """Смесваща дължина по Blackadar."""
+    kv = 0.4
+    z_safe = np.maximum(z, 0.01)
+    return kv * z_safe / (1.0 + kv * z_safe / l_inf)
+
+
+def tke_step(e: np.ndarray,
+             theta_v: np.ndarray,
+             u: np.ndarray, v: np.ndarray,
+             z: np.ndarray, rho: np.ndarray,
+             dt: float) -> tuple:
+    """
+    Прогностична стъпка за TKE e(z,t) [m²/s²].
+
+    ∂e/∂t = P_shear + P_buoy - ε + дифузия
+
+    Връща: (e_new, Km, Kh)
+    """
+    nz = len(z)
+    dz = np.gradient(z)
+    l  = tke_mixing_length(z)
+    sq_e = np.sqrt(np.maximum(e, e_min))
+
+    # Km и Kh от TKE
+    Km = Cm * l * sq_e
+    Kh = Ch * l * sq_e
+
+    # Shear производство P_s = Km * S²
+    du = np.gradient(u, z)
+    dv = np.gradient(v, z)
+    S2 = du**2 + dv**2
+    P_shear = Km * S2
+
+    # Buoyancy производство/потискане P_b = -Kh * N²
+    # N² = (g/θv) * dθv/dz
+    dtheta_v = np.gradient(theta_v, z)
+    N2 = (g / theta_v) * dtheta_v
+    P_buoy = -Kh * N2
+
+    # Дисипация ε = Ce * e^(3/2) / l
+    eps = Ce * e * sq_e / np.maximum(l, 0.1)
+
+    # Дифузия на TKE: ∂/∂z(K_e * ∂e/∂z)  с K_e = Km
+    de_dz  = np.gradient(e, z)
+    flux_e = Km * de_dz * rho
+    diff_e = np.gradient(flux_e, z) / rho
+
+    # TKE уравнение
+    de_dt = P_shear + P_buoy - eps + diff_e
+    e_new = e + dt * de_dt
+    # Защита: NaN/Inf → reset към e_min
+    e_new = np.where(np.isfinite(e_new), e_new, e_min)
+    e_new = np.clip(e_new, e_min, 10.0)   # TKE в [e_min, 10] m²/s²
+
+    # Обновяваме Km/Kh с новото e
+    sq_e_new = np.sqrt(e_new)
+    Km_new = np.clip(Cm * l * sq_e_new, 1e-4, 5.0)
+    Kh_new = np.clip(Ch * l * sq_e_new, 1e-4, 5.0)
+
+    return e_new, Km_new, Kh_new
 
 
 def bulk_richardson_and_shear(theta_v: np.ndarray, u: np.ndarray,
@@ -314,21 +454,8 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     # F↑ ≈ F↓ в тънката 1D колона.
     # Реалното нощно LW охлаждане е ~0.5-1 K/hr от загуба към Космоса.
     # Параметризираме го като функция от T и час (нощем е по-силно).
-    lwp_total = float(lwp_path[-1])
-    if lwp_total < 0.001:   # ясно небе (без мъгла)
-        # Нощно охлаждане: Stefan-Boltzmann загуба от приземния слой
-        # dT/dt ≈ -emiss * sigma * T^4 / (rho * cp * H_eff)
-        # H_eff ~ 200m (ефективна дебелина на охлаждащия слой)
-        # При ясно небе: нетна загуба ≈ emiss*(F↑_sfc - F↓_sky)
-        # Опростено: ~0.5 K/hr нощем, намалява към обяд от SW компенсация
-        sin_el_now = _sin_elevation(hour_utc, day_of_year)
-        night_factor = max(1.0 - 2.0 * sin_el_now, 0.0)  # 1 нощем, 0 при висок слънчев ъгъл
-        H_eff  = 200.0   # m
-        dT_lw_clear = -(emiss_air * sigma * T[0]**4 * 0.015) / (rho[0] * cp * H_eff)
-        # Разпределяме в долните 200m с exp профил
-        weight = np.exp(-z / 100.0)
-        weight /= weight.sum()
-        dQ_dt += dT_lw_clear * night_factor * weight * len(z)
+    # Clear-sky LW охлаждане — поето от SEB (T_skin охлажда въздуха чрез H)
+    # Блокът е премахнат. Two-stream работи само за мъглен/облачен LW.
 
     return dQ_dt
 
@@ -552,10 +679,18 @@ class FogModel1D:
         else:
             self.day_of_year = int(day_of_year)
 
-        # Почвени температури (Force-Restore)
-        # Инициализираме от приземната T на модела
-        self.T_soil      = float(T[0])   # повърхностен слой
-        self.T_soil_deep = float(T[0])   # дълбок слой — дневна инерция
+        # Почвена температура (от ICON, константа)
+        self.T_soil = float(T[0])    # ще се презапише от run_case/run_operational
+        # SEB: температура на повърхността
+        self.T_skin = float(T[0]) - 1.0
+
+        # TKE — инициализираме от равновесно производство при началния shear
+        # e_init = (Cm * l * S)² / Ce  — равновесно TKE без плавучест
+        _l_init = tke_mixing_length(self.z)
+        _Ri_init, _S_init = bulk_richardson_and_shear(
+            virtual_potential_temp(T_to_theta(np.array(T), np.array(p)), np.array(qv), np.zeros_like(np.array(qv))),
+            np.array(u), np.array(v), self.z)
+        self.e = np.maximum((Cm * _l_init * np.maximum(_S_init, 0.01))**2 / Ce, e_min)
 
         # Диагностика
         self.history = []  # списък с dict за всеки изходен час
@@ -574,33 +709,62 @@ class FogModel1D:
         theta    = T_to_theta(T, self.p)
         theta_v  = virtual_potential_temp(theta, qv, ql)
 
-        # 2. Richardson → K
-        Ri, S = bulk_richardson_and_shear(theta_v, self.u, self.v, self.z)
-        K     = louis_stability_function(Ri, self.z, S)
+        # 2. Турбуленция
+        # TKE схема + Louis фонов минимум за стабилност при инверсия
+        self.e, Km_tke, Kh_tke = tke_step(
+            self.e, theta_v, self.u, self.v, self.z, self.rho, self.dt)
 
-        # 3. Дифузия
-        T_new  = turbulent_diffusion(T,  K, self.rho, self.z, self.dt)
-        qv_new = turbulent_diffusion(qv, K, self.rho, self.z, self.dt)
-        ql_new = turbulent_diffusion(ql, K, self.rho, self.z, self.dt)
+        # Louis минимален Kh при силна инверсия — предотвратява замръзване на T
+        Ri, S = bulk_richardson_and_shear(theta_v, self.u, self.v, self.z)
+        K_louis = louis_stability_function(Ri, self.z, S)
+
+        # Взимаме максимума: TKE или Louis минимум
+        # TKE управлява при активна турбуленция
+        # Louis осигурява минимален поток при тиха инверсия
+        Km = np.maximum(Km_tke, K_louis * 0.1)   # 10% от Louis като минимум
+        Kh = np.maximum(Kh_tke, K_louis * 0.1)
+
+        # 3. Дифузия (T и qv с Kh, ql с Km)
+        T_new  = turbulent_diffusion(T,  Kh, self.rho, self.z, self.dt)
+        qv_new = turbulent_diffusion(qv, Kh, self.rho, self.z, self.dt)
+        ql_new = turbulent_diffusion(ql, Km, self.rho, self.z, self.dt)
         ql_new = np.maximum(ql_new, 0.0)
+
+        # Защита срещу NaN от TKE нестабилност
+        if not np.all(np.isfinite(T_new)):
+            T_new = np.where(np.isfinite(T_new), T_new, T)
+        if not np.all(np.isfinite(qv_new)):
+            qv_new = np.where(np.isfinite(qv_new), qv_new, qv)
 
         # 4. Радиация
         hour_now = (self.hour0 + self.time / 3600.0) % 24.0
         dT_rad = two_stream_radiation(
             T_new, ql_new, self.z, self.rho, hour_now, self.day_of_year)
 
-        # К2 resolved: cap премахнат — soil heat flux (Force-Restore) поема
-        # физическото ограничение на охлаждането.
+        # К2 resolved: cap премахнат.
+        # TKE+Louis хибрид осигурява физическото ограничение на охлаждането.
+        # Soil flux (при G<0) допълнително стабилизира при студена почва.
         T_new += dT_rad * self.dt
 
-        # 5. Топлинен флукс от почвата (Force-Restore, Deardorff 1978)
-        G, self.T_soil, self.T_soil_deep = soil_heat_flux(
-            float(T_new[0]), self.T_soil, self.T_soil_deep, self.dt)
-        # Прилагаме флукса само към приземното ниво
-        # dT = G / (rho * cp * dz_sfc)
-        dz_sfc = float(self.z[1] - self.z[0]) if len(self.z) > 1 else 10.0
-        dT_soil_flux = G * self.dt / (self.rho[0] * cp * dz_sfc)
-        T_new[0] += dT_soil_flux
+        # 5. Surface Energy Balance (SEB) — Fable5 дизайн
+        sw_down_seb = solar_sw_down(hour_now, self.day_of_year)
+        lwp_col_seb = float(np.sum(ql_new * self.rho * np.gradient(self.z)))
+
+        self.T_skin, H_sfc, E_dew = seb_step(
+            self.T_skin, self.T_soil,
+            float(T_new[0]), float(qv_new[0]),
+            float(self.p[0]), float(self.rho[0]),
+            float(np.hypot(self.u[0], self.v[0])),
+            lwp_col_seb, sw_down_seb, self.dt)
+
+        # Обратна връзка: H загрява/охлажда въздуха в ефективен слой
+        # При мъгла — по-дебел слой (мъглата изолира и смесва топлинния поток)
+        DZ_EFF_SEB = 50.0 if lwp_col_seb > 0.005 else 20.0
+        T_new[0] += H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
+
+        # Роса: изважда влага от приземното ниво
+        qv_new[0] -= E_dew * self.dt / (self.rho[0] * DZ_EFF_SEB)
+        qv_new[0] = max(qv_new[0], 1e-8)
 
         # 6. Микрофизика
         dqv, dql, dT_mic = microphysics(qv_new, ql_new, T_new, self.p, self.rho, self.dt)
