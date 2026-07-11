@@ -816,22 +816,7 @@ def run_case(icao: str, date_str: str, hour0: int,
             print(f"{r['hour_utc']:8.1f} | {r['T_sfc']-273.15:6.1f} | "
                   f"{r['rh_sfc']*100:5.1f} | {r['ql_sfc']*1000:9.4f} | "
                   f"{r['vis_sfc']:7.0f} | {r['cat']}")
-            # QV профил лог — долните 8 нива
-            if getattr(model, '_log_qv', False):
-                import numpy as _np_log
-                from fog_model import sat_vapor_pressure as _svp, eps_r as _eps
-                qv_g = model.qv[:8] * 1000
-                z_l  = model.z[:8]
-                T_l  = model.T[:8] - 273.15
-                es   = _svp(model.T[:8])
-                qsat = _eps * es / (model.p[:8] - es)
-                rh   = _np_log.clip(model.qv[:8] / qsat, 0, 1.1) * 100
-                print(f"  qv[g/kg]: " +
-                      "  ".join(f"z={z_l[i]:.1f}m:{qv_g[i]:.3f}" for i in range(8)))
-                print(f"  T[°C]:    " +
-                      "  ".join(f"{T_l[i]:.2f}" for i in range(8)))
-                print(f"  RH[%]:    " +
-                      "  ".join(f"{rh[i]:.1f}" for i in range(8)))
+
 
     # 5. Изход
     os.makedirs(out_dir, exist_ok=True)

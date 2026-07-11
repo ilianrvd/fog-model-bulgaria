@@ -778,14 +778,16 @@ class FogModel1D:
         qv_new[0] = max(qv_new[0], 1e-8)
 
         # Saturated surface condition (Teixeira & Miranda 1999)
-        # При T_skin < Td на въздуха → повърхността е наситена
-        # qv[0] се "закача" на насищане спрямо T_skin
-        # Това имитира влажностна адвекция от по-влажни части на котловината
+        # Активира се САМО при реална роса: T_skin < Td на въздуха
+        # Td на въздуха от qv[0]: Td = 243.5*ln(e/6.112) / (17.67-ln(e/6.112))
+        _e_air    = qv_new[0] * self.p[0] / (eps_r + qv_new[0])  # Pa
+        _e_hPa    = max(_e_air / 100., 0.01)
+        _ln_e     = np.log(_e_hPa / 6.112)
+        _Td_air   = 243.5 * _ln_e / (17.67 - _ln_e) + 273.15  # K
         _es_skin  = sat_vapor_pressure(np.array([self.T_skin]))[0]
         _qsat_sfc = eps_r * _es_skin / (self.p[0] - _es_skin)
-        if qv_new[0] < _qsat_sfc and self.T_skin < self.T[0]:
-            # Повърхността е наситена и по-студена от въздуха
-            # → qv[0] се вдига до насищане
+        # Роса: T_skin < Td_air → повърхността е под точката на оросяване
+        if self.T_skin < _Td_air and qv_new[0] < _qsat_sfc:
             qv_new[0] = _qsat_sfc
 
         # 6. Микрофизика
