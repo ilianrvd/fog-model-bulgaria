@@ -758,8 +758,14 @@ class FogModel1D:
             lwp_col_seb, sw_down_seb, self.dt)
 
         # Обратна връзка: H загрява/охлажда въздуха в ефективен слой
-        # При мъгла — по-дебел слой (мъглата изолира и смесва топлинния поток)
-        DZ_EFF_SEB = 50.0 if lwp_col_seb > 0.005 else 20.0
+        # Денем SW → PBL смесване в дебел слой; нощем/мъгла — тънък
+        sin_el_seb = _sin_elevation(hour_now, self.day_of_year)
+        if sin_el_seb > 0.1:          # ден — SW загрява PBL
+            DZ_EFF_SEB = 500.0
+        elif lwp_col_seb > 0.005:     # мъгла нощем
+            DZ_EFF_SEB = 50.0
+        else:                          # ясна нощ
+            DZ_EFF_SEB = 20.0
         T_new[0] += H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
 
         # Роса: изважда влага от приземното ниво
