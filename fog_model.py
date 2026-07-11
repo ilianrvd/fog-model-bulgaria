@@ -204,6 +204,7 @@ ALBEDO   = 0.20      # албедо
 LAMBDA_G = 0.5       # W/m/K
 D_SOIL_G = 0.05      # m
 U_MIN    = 0.3       # m/s
+C_SOIL_LAYER = 1.2e6 * 0.10   # J/m²/K — Force-Restore T_soil
 
 
 def seb_step(T_skin: float, T_soil: float,
@@ -248,7 +249,10 @@ def seb_step(T_skin: float, T_soil: float,
     dT_skin = dt * (R_net - H + G + LE) / C_SKIN
     dT_skin = float(np.clip(dT_skin, -2.0, 2.0))   # единствена защита
 
-    return T_skin + dT_skin, H, E_dew
+    # Force-Restore T_soil — бавно охлаждане нощем (max 0.5 K/hr)
+    dT_soil = float(np.clip(-G * dt / C_SOIL_LAYER, -0.2*dt/3600., 0.2*dt/3600.))
+
+    return T_skin + dT_skin, H, E_dew, T_soil + dT_soil
 
 
 
@@ -750,7 +754,7 @@ class FogModel1D:
         sw_down_seb = solar_sw_down(hour_now, self.day_of_year)
         lwp_col_seb = float(np.sum(ql_new * self.rho * np.gradient(self.z)))
 
-        self.T_skin, H_sfc, E_dew = seb_step(
+        self.T_skin, H_sfc, E_dew, self.T_soil = seb_step(
             self.T_skin, self.T_soil,
             float(T_new[0]), float(qv_new[0]),
             float(self.p[0]), float(self.rho[0]),
