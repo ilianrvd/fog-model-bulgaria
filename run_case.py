@@ -72,6 +72,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         "temperature_2m", "dewpoint_2m", "surface_pressure",
         "windspeed_10m",  "winddirection_10m", "relativehumidity_2m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
+        "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
     ]
 
     # Крайна дата (може да е следващия ден)
@@ -193,6 +194,28 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
 
     print(f"[ICON-EU HIST] Nudging профили: {len(hourly_profiles)} часа")
 
+    # Ефективна облачност (0–1) по час — за LW_down в SEB
+    # (Crawford & Duchon). Ниските облаци тежат най-много, високите слабо.
+    def _cf_at(ti):
+        def g(name):
+            arr = hourly.get(name)
+            v = arr[ti] if arr is not None and ti < len(arr) else None
+            return None if v is None else min(max(float(v) / 100.0, 0.0), 1.0)
+        lo, mi, hi, tot = (g("cloudcover_low"), g("cloudcover_mid"),
+                           g("cloudcover_high"), g("cloudcover"))
+        if lo is None and mi is None and hi is None:
+            t = tot if tot is not None else 0.0
+            return (t, 0.0, 0.0)
+        return (lo or 0.0, mi or 0.0, hi or 0.0)
+
+    cc_series = [_cf_at(ti)
+                 for ti in range(t0_idx,
+                                 min(t0_idx + forecast_hours + 1, len(times)))]
+    if cc_series:
+        _cfp = [1 - (1-l)*(1-0.7*m)*(1-0.25*h) for l, m, h in cc_series]
+        print(f"[ICON-EU HIST] Облачност cf(сурова): старт={_cfp[0]:.2f}  "
+              f"мин={min(_cfp):.2f}  макс={max(_cfp):.2f}")
+
     return {
         "z"               : z,
         "T"               : T,
@@ -205,6 +228,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         "icao"            : icao,
         "hourly_profiles" : hourly_profiles,
         "T_soil"          : T_soil_K,
+        "cc_series"       : cc_series,          # (lo,mid,hi) по час за SEB
     }
 
 
@@ -681,6 +705,10 @@ def run_case(icao: str, date_str: str, hour0: int,
 
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour0), dt=dt, day_of_year=doy)
+
+    # Облачност за SEB LW_down — (lo,mid,hi) тройки; дискриминацията
+    # мъгла-vs-облак става в runtime по собствената приземна RH
+    model.cc_series = profile.get("cc_series", [])
 
     # Инициализираме почвените температури от ICON
     T_soil_icon = profile.get("T_soil")

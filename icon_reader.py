@@ -102,6 +102,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "winddirection_10m",
         "relativehumidity_2m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
+        "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
     ]
 
     all_vars = surface_vars + level_vars
@@ -288,6 +289,21 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         if prof_t:
             hourly_profiles.append(prof_t)
 
+    # Ефективна облачност (0-1) по час — Crawford & Duchon тежести
+    def _cf_at(ti):
+        def g(name):
+            arr = hourly.get(name)
+            v = arr[ti] if arr is not None and ti < len(arr) else None
+            return None if v is None else min(max(float(v)/100.0, 0.0), 1.0)
+        lo, mi, hi, tot = (g("cloudcover_low"), g("cloudcover_mid"),
+                           g("cloudcover_high"), g("cloudcover"))
+        if lo is None and mi is None and hi is None:
+            return (tot if tot is not None else 0.0, 0.0, 0.0)
+        return (lo or 0.0, mi or 0.0, hi or 0.0)
+    cc_series = [_cf_at(ti)
+                 for ti in range(t0_idx,
+                                 min(t0_idx + forecast_hours, len(times)))]
+
     return {
         "z"               : z,
         "T"               : T,
@@ -300,6 +316,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "icao"            : icao,
         "hourly_profiles" : hourly_profiles,   # за nudging
         "T_soil"          : T_soil_K,          # за Force-Restore soil flux
+        "cc_series"       : cc_series,          # (lo,mid,hi) по час за SEB
     }
 
 
