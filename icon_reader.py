@@ -103,7 +103,6 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
         "relativehumidity_2m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
         "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
-        "precipitation",
     ]
 
     all_vars = surface_vars + level_vars
@@ -298,13 +297,9 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
             return None if v is None else min(max(float(v)/100.0, 0.0), 1.0)
         lo, mi, hi, tot = (g("cloudcover_low"), g("cloudcover_mid"),
                            g("cloudcover_high"), g("cloudcover"))
-        rh2 = g("relativehumidity_2m")
-        rh2 = rh2 if rh2 is not None else 0.0
-        pr  = g("precipitation", scale=None)
-        pr  = pr if pr is not None else 0.0
         if lo is None and mi is None and hi is None:
-            return (tot if tot is not None else 0.0, 0.0, 0.0, rh2, pr)
-        return (lo or 0.0, mi or 0.0, hi or 0.0, rh2, pr)
+            return (tot if tot is not None else 0.0, 0.0, 0.0)
+        return (lo or 0.0, mi or 0.0, hi or 0.0)
     cc_series = [_cf_at(ti)
                  for ti in range(t0_idx,
                                  min(t0_idx + forecast_hours, len(times)))]

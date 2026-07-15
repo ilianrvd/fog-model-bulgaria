@@ -73,7 +73,6 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         "windspeed_10m",  "winddirection_10m", "relativehumidity_2m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
         "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
-        "precipitation",
     ]
 
     # Крайна дата (може да е следващия ден)
@@ -198,32 +197,24 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
     # Ефективна облачност (0–1) по час — за LW_down в SEB
     # (Crawford & Duchon). Ниските облаци тежат най-много, високите слабо.
     def _cf_at(ti):
-        def g(name, scale=100.0):
+        def g(name):
             arr = hourly.get(name)
             v = arr[ti] if arr is not None and ti < len(arr) else None
-            if v is None:
-                return None
-            return min(max(float(v) / scale, 0.0), 1.0) if scale else float(v)
+            return None if v is None else min(max(float(v) / 100.0, 0.0), 1.0)
         lo, mi, hi, tot = (g("cloudcover_low"), g("cloudcover_mid"),
                            g("cloudcover_high"), g("cloudcover"))
-        rh2 = g("relativehumidity_2m")
-        rh2 = rh2 if rh2 is not None else 0.0
-        pr  = g("precipitation", scale=None)   # mm/h, сурова стойност
-        pr  = pr if pr is not None else 0.0
         if lo is None and mi is None and hi is None:
             t = tot if tot is not None else 0.0
-            return (t, 0.0, 0.0, rh2, pr)
-        return (lo or 0.0, mi or 0.0, hi or 0.0, rh2, pr)
+            return (t, 0.0, 0.0)
+        return (lo or 0.0, mi or 0.0, hi or 0.0)
 
     cc_series = [_cf_at(ti)
                  for ti in range(t0_idx,
                                  min(t0_idx + forecast_hours + 1, len(times)))]
     if cc_series:
-        _cfp = [1 - (1-l)*(1-0.7*m)*(1-0.25*h) for l, m, h, _r, _p in cc_series]
-        _prp = [t[4] for t in cc_series]
+        _cfp = [1 - (1-l)*(1-0.7*m)*(1-0.25*h) for l, m, h in cc_series]
         print(f"[ICON-EU HIST] Облачност cf(сурова): старт={_cfp[0]:.2f}  "
-              f"мин={min(_cfp):.2f}  макс={max(_cfp):.2f}  "
-              f"валеж макс={max(_prp):.1f}mm/h")
+              f"мин={min(_cfp):.2f}  макс={max(_cfp):.2f}")
 
     return {
         "z"               : z,

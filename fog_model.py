@@ -788,35 +788,22 @@ class FogModel1D:
         sw_down_seb = solar_sw_down(hour_now, self.day_of_year)
         lwp_col_seb = float(np.sum(ql_new * self.rho * np.gradient(self.z)))
 
-        # Облачност за LW_down: (lo,mid,hi[,rh2m_icon]) от model.cc_series.
-        # Дисконт на ниската облачност (тя е ICON-овата мъгла, не топлещ
-        # слой) САМО при двойно потвърждение за насищане при земята:
-        #   НАШАТА приземна RH > 95%  И  ICON rh2m > 95%.
-        # Едностранното условие изяждаше реален stratus (14.03: дъжд+OVC,
-        # ICON rh2m=75%) или пропускаше ICON мъглата (21.10: rh2m=96-100%).
+        # Облачност за LW_down. Предпочитаме (lo,mid,hi) тройки
+        # (model.cc_series): ICON "ниска облачност" при НАШАТА приземна
+        # RH>95% е почти сигурно самата мъгла, която гоним — дисконт ×0.2,
+        # иначе прогнозата за мъглата убива мъглообразуването.
+        # Средни/високи облаци топлят винаги (легитимни).
         cf_now = 0.0
         _ccs = getattr(self, "cc_series", None)
         if _ccs is not None and len(_ccs) > 0:
             _ci = min(int(self.time // 3600.0), len(_ccs) - 1)
-            _row = _ccs[_ci]
-            _lo  = _row[0]; _mi = _row[1]; _hi = _row[2]
-            _rh2i = _row[3] if len(_row) >= 4 else 1.0
-            _pr   = _row[4] if len(_row) >= 5 else 0.0
-
+            _lo, _mi, _hi = _ccs[_ci]
             _es0 = sat_vapor_pressure(np.array([float(T_new[0])]))[0]
             _qs0 = eps_r * _es0 / (float(self.p[0]) - _es0)
             _rh0 = float(qv_new[0]) / max(_qs0, 1e-9)
-
-            if _pr > 0.1:
-                # Дъжд → реален облак, без дисконт, cf под 0.8 минимум
-                pass
-            elif _rh0 > 0.95:
-                # Суха нощ близо до насищане → ниска облачност е ICON мъгла
+            if _rh0 > 0.95:
                 _lo = _lo * 0.2
-
             cf_now = 1.0 - (1.0 - _lo) * (1.0 - 0.7 * _mi) * (1.0 - 0.25 * _hi)
-            if _pr > 0.1:
-                cf_now = max(cf_now, 0.8)
             cf_now = min(max(cf_now, 0.0), 1.0)
         else:
             _cfs = getattr(self, "cf_series", None)
