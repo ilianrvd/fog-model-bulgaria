@@ -206,11 +206,17 @@ D_SOIL_G = 0.05      # m
 U_MIN    = 0.3       # m/s
 C_SOIL_LAYER = 1.2e6 * 0.10   # J/m²/K — Force-Restore T_soil
 
+# Диагностика на SEB бюджета. Логва член по член нощем.
+# Включи с fog_model.SEB_DEBUG = True, или SEB_DEBUG=1 в средата.
+import os as _os
+SEB_DEBUG = _os.environ.get("SEB_DEBUG", "0") == "1"
+
 
 def seb_step(T_skin: float, T_soil: float,
              T_air0: float, qv0: float, p0: float, rho0: float,
              U0: float, lwp_col: float,
-             sw_down: float, dt: float) -> tuple:
+             sw_down: float, dt: float, hour_utc: float = -1.0,
+             T_sky: float = None, cf: float = 0.0) -> tuple:
     """
     Една стъпка на Surface Energy Balance.
     Връща: (T_skin_new, H, E_dew)
@@ -221,14 +227,25 @@ def seb_step(T_skin: float, T_soil: float,
     e_Pa  = qv0 * p0 / (eps_r + qv0 * (1 - eps_r))
     e_hPa = max(e_Pa / 100.0, 0.1)
 
-    # 2. Атмосферна емисивност (Brunt 1932); при мъгла → черно тяло
-    eps_a = 0.52 + 0.065 * np.sqrt(e_hPa)
-    if lwp_col > 0.005:
+    # 2. Атмосферна емисивност.
+    #    МЪГЛА: черно тяло (eps_a=1) — пълно fog-top охлаждане.
+    #    ИНАЧЕ: Crawford & Duchon (1999): eps = cf + (1−cf)·eps_clear,
+    #    с eps_clear по Prata (1996). Облачността (cf от ICON) носи
+    #    топлия LW_down в облачни нощи; ясните нощи охлаждат пълноценно.
+    is_fog = lwp_col > 0.005
+    if is_fog:
         eps_a = 1.0
-    eps_a = min(eps_a, 1.0)
+    else:
+        w_pw  = 46.5 * (e_hPa / T_air0)
+        eps_clear = 1.0 - (1.0 + w_pw) * np.exp(-np.sqrt(1.2 + 3.0 * w_pw))
+        cf_c  = min(max(float(cf), 0.0), 1.0)
+        eps_a = cf_c + (1.0 - cf_c) * eps_clear
+        eps_a = float(min(max(eps_a, 0.60), 1.0))
+    # LW_down от екранната температура — Prata/C&D са калибрирани така.
+    T_rad_down = T_air0
 
     # 3. Радиационен баланс
-    LW_down = eps_a * sigma * T_air0**4
+    LW_down = eps_a * sigma * T_rad_down**4
     LW_up   = EPS_SFC * sigma * T_skin**4
     R_net   = LW_down - LW_up + (1.0 - ALBEDO) * sw_down
 
@@ -244,6 +261,17 @@ def seb_step(T_skin: float, T_soil: float,
     qsat_skin = eps_r * es_skin / (p0 - es_skin)
     E_dew = max(rho0 * C_H_BULK * U_eff * (qv0 - qsat_skin), 0.0)
     LE    = Lv * E_dew
+
+    # ── ДИАГНОСТИКА SEB (когато SEB_DEBUG=1, само на кръгъл час) ──
+    if (SEB_DEBUG or _os.environ.get("SEB_DEBUG") == "1") and abs(hour_utc - round(hour_utc)) < 0.009:
+        _dTs = dt * (R_net - H + G + LE) / C_SKIN
+        print(f"    SEB {hour_utc:4.1f}h sw={sw_down:6.1f} "
+              f"Rnet={R_net:+7.1f} negH={-H:+7.1f} G={G:+7.1f} LE={LE:+6.1f} "
+              f"| dTskin={_dTs:+6.3f}K/step "
+              f"Tskin={T_skin-273.15:+6.2f} Tair={T_air0-273.15:+6.2f} "
+              f"Tsoil={T_soil-273.15:+6.2f} eps_a={eps_a:.3f} U={U_eff:.2f} "
+              f"cf={cf:.2f}", flush=True)
+    # ────────────────────────────────────────────────
 
     # 7. Прогностично уравнение
     dT_skin = dt * (R_net - H + G + LE) / C_SKIN
@@ -430,8 +458,9 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     # Реални стойности от PAFOG верификации: макс ~0.8 K/hr в мъглата
     lwp_col = float(lwp_path[-1])
     # max_cool варира плавно с LWP
-    # при ясно: 0.2 K/hr; при мъгла (LWP~0.05 kg/m²): 0.8 K/hr
-    max_cool_val = 0.2 + 0.6 * np.tanh(lwp_col / 0.02)   # K/hr
+    # при ясно: 0.8 K/hr (реални decoupled тихи нощи: 0.5–1.5 K/hr);
+    # при мъгла (LWP~0.05 kg/m²): ~1.2 K/hr
+    max_cool_val = 0.8 + 0.4 * np.tanh(lwp_col / 0.02)   # K/hr
     max_cool = max_cool_val / 3600.0
     dQ_lw = np.maximum(dQ_lw, -max_cool)   # ограничаваме охлаждането
 
@@ -488,11 +517,15 @@ def microphysics(qv: np.ndarray, ql: np.ndarray,
     dql  = np.zeros_like(ql)
     dT   = np.zeros_like(T)
 
-    # Кондензация (rh > 1)
-    mask_cond = rh > 1.0
+    # Кондензация при rh > RH_CRIT (не строго 1.0):
+    # реалните CCN активират кондензация под 100% (Köhler);
+    # PAFOG-клас модели ползват ~99.5%. Хистерезисът спрямо
+    # прага за изпарение (0.98) предпазва от трептене.
+    RH_CRIT = 0.995
+    mask_cond = rh > RH_CRIT
     if mask_cond.any():
-        # Количество водна пара за кондензация
-        excess = (qv - qs) * mask_cond.astype(float)
+        # Количество водна пара за кондензация (излишък над RH_CRIT·qs)
+        excess = (qv - RH_CRIT * qs) * mask_cond.astype(float)
         # Ограничаваме за стабилност
         dcond  = np.minimum(excess, qv * 0.5)
         dqv   -= dcond
@@ -755,12 +788,49 @@ class FogModel1D:
         sw_down_seb = solar_sw_down(hour_now, self.day_of_year)
         lwp_col_seb = float(np.sum(ql_new * self.rho * np.gradient(self.z)))
 
+        # Облачност за LW_down: (lo,mid,hi[,rh2m_icon]) от model.cc_series.
+        # Дисконт на ниската облачност (тя е ICON-овата мъгла, не топлещ
+        # слой) САМО при двойно потвърждение за насищане при земята:
+        #   НАШАТА приземна RH > 95%  И  ICON rh2m > 95%.
+        # Едностранното условие изяждаше реален stratus (14.03: дъжд+OVC,
+        # ICON rh2m=75%) или пропускаше ICON мъглата (21.10: rh2m=96-100%).
+        cf_now = 0.0
+        _ccs = getattr(self, "cc_series", None)
+        if _ccs is not None and len(_ccs) > 0:
+            _ci = min(int(self.time // 3600.0), len(_ccs) - 1)
+            _row = _ccs[_ci]
+            _lo  = _row[0]; _mi = _row[1]; _hi = _row[2]
+            _rh2i = _row[3] if len(_row) >= 4 else 1.0
+            _pr   = _row[4] if len(_row) >= 5 else 0.0
+
+            _es0 = sat_vapor_pressure(np.array([float(T_new[0])]))[0]
+            _qs0 = eps_r * _es0 / (float(self.p[0]) - _es0)
+            _rh0 = float(qv_new[0]) / max(_qs0, 1e-9)
+
+            if _pr > 0.1:
+                # Дъжд → реален облак, без дисконт, cf под 0.8 минимум
+                pass
+            elif _rh0 > 0.95:
+                # Суха нощ близо до насищане → ниска облачност е ICON мъгла
+                _lo = _lo * 0.2
+
+            cf_now = 1.0 - (1.0 - _lo) * (1.0 - 0.7 * _mi) * (1.0 - 0.25 * _hi)
+            if _pr > 0.1:
+                cf_now = max(cf_now, 0.8)
+            cf_now = min(max(cf_now, 0.0), 1.0)
+        else:
+            _cfs = getattr(self, "cf_series", None)
+            if _cfs is not None and len(_cfs) > 0:
+                _ci = min(int(self.time // 3600.0), len(_cfs) - 1)
+                cf_now = float(_cfs[_ci])
+
         self.T_skin, H_sfc, E_dew, self.T_soil = seb_step(
             self.T_skin, self.T_soil,
             float(T_new[0]), float(qv_new[0]),
             float(self.p[0]), float(self.rho[0]),
             float(np.hypot(self.u[0], self.v[0])),
-            lwp_col_seb, sw_down_seb, self.dt)
+            lwp_col_seb, sw_down_seb, self.dt, hour_now,
+            None, cf_now)
 
         # Обратна връзка: H загрява/охлажда въздуха в ефективен слой
         # Денем SW → PBL смесване в дебел слой; нощем/мъгла — тънък
@@ -770,7 +840,10 @@ class FogModel1D:
         elif lwp_col_seb > 0.005:     # мъгла нощем
             DZ_EFF_SEB = 50.0
         else:                          # ясна нощ
-            DZ_EFF_SEB = 20.0
+            # Плитък decoupled слой: реално изстиват първите метри,
+            # не 20m. С H~1.4 W/m²: 20m → 0.2 K/hr; 8m → ~0.5 K/hr,
+            # близо до наблюдаваните 0.8–1 K/hr в тихи ясни нощи.
+            DZ_EFF_SEB = 8.0
         T_new[0] += H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
 
         # Роса: изважда влага от приземното ниво
