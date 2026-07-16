@@ -797,7 +797,7 @@ class FogModel1D:
         _ccs = getattr(self, "cc_series", None)
         if _ccs is not None and len(_ccs) > 0:
             _ci = min(int(self.time // 3600.0), len(_ccs) - 1)
-            _lo, _mi, _hi = _ccs[_ci]
+            _row = _ccs[_ci]; _lo, _mi, _hi = _row[0], _row[1], _row[2]; _rh2i = _row[3] if len(_row)>3 else 1.0; _pr = _row[4] if len(_row)>4 else 0.0
             _es0 = sat_vapor_pressure(np.array([float(T_new[0])]))[0]
             _qs0 = eps_r * _es0 / (float(self.p[0]) - _es0)
             _rh0 = float(qv_new[0]) / max(_qs0, 1e-9)

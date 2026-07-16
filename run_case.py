@@ -13,6 +13,10 @@ python run_case.py --date 2026-07-01 --hour 18 --hours 12 --no-nudge
 """
 
 import sys, os, argparse, json, urllib.request, urllib.parse
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 import numpy as np
 from datetime import datetime, timezone, timedelta
 
@@ -24,8 +28,8 @@ from output        import save_surface_csv, plot_forecast, print_summary_report
 
 AIRPORT_CONFIG = {
     "LBSF": {"coastal": False, "N_d": 300e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBWN": {"coastal": True,  "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
-    "LBBG": {"coastal": True,  "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
+    "LBWN": {"fix_soil": True, "sea_sector": (20, 160), "coastal": True,  "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
+    "LBBG": {"sea_sector": (30, 170), "coastal": True,  "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
     "LBPD": {"coastal": False, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
     "LBGO": {"coastal": False, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
 }
@@ -73,6 +77,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
         "windspeed_10m",  "winddirection_10m", "relativehumidity_2m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
         "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
+        "precipitation",
     ]
 
     # Крайна дата (може да е следващия ден)
@@ -197,24 +202,32 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
     # Ефективна облачност (0–1) по час — за LW_down в SEB
     # (Crawford & Duchon). Ниските облаци тежат най-много, високите слабо.
     def _cf_at(ti):
-        def g(name):
+        def g(name, scale=100.0):
             arr = hourly.get(name)
             v = arr[ti] if arr is not None and ti < len(arr) else None
-            return None if v is None else min(max(float(v) / 100.0, 0.0), 1.0)
+            if v is None:
+                return None
+            return min(max(float(v) / scale, 0.0), 1.0) if scale else float(v)
         lo, mi, hi, tot = (g("cloudcover_low"), g("cloudcover_mid"),
                            g("cloudcover_high"), g("cloudcover"))
+        rh2 = g("relativehumidity_2m")
+        rh2 = rh2 if rh2 is not None else 0.0
+        pr  = g("precipitation", scale=None)   # mm/h, сурова стойност
+        pr  = pr if pr is not None else 0.0
         if lo is None and mi is None and hi is None:
             t = tot if tot is not None else 0.0
-            return (t, 0.0, 0.0)
-        return (lo or 0.0, mi or 0.0, hi or 0.0)
+            return (t, 0.0, 0.0, rh2, pr)
+        return (lo or 0.0, mi or 0.0, hi or 0.0, rh2, pr)
 
     cc_series = [_cf_at(ti)
                  for ti in range(t0_idx,
                                  min(t0_idx + forecast_hours + 1, len(times)))]
     if cc_series:
-        _cfp = [1 - (1-l)*(1-0.7*m)*(1-0.25*h) for l, m, h in cc_series]
+        _cfp = [1 - (1-l)*(1-0.7*m)*(1-0.25*h) for l, m, h, _r, _p in cc_series]
+        _prp = [t[4] for t in cc_series]
         print(f"[ICON-EU HIST] Облачност cf(сурова): старт={_cfp[0]:.2f}  "
-              f"мин={min(_cfp):.2f}  макс={max(_cfp):.2f}")
+              f"мин={min(_cfp):.2f}  макс={max(_cfp):.2f}  "
+              f"валеж макс={max(_prp):.1f}mm/h")
 
     return {
         "z"               : z,
@@ -715,7 +728,15 @@ def run_case(icao: str, date_str: str, hour0: int,
     if T_soil_icon is not None:
         model.T_soil = float(T_soil_icon)
         model.T_skin = float(T_soil_icon)   # старт: повърхността ≈ почвата
-        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
+
+    # Корекция за LBWN: ICON морска клетка дава T_soil=0-3°C при реални 8-14°C.
+    # Варна е в процеп между езеро и море — нямаме наземна ICON клетка.
+    if cfg.get('fix_soil'):
+        _ts = model.T_soil - 273.15
+        _ta = float(model.T[0]) - 273.15  # METAR T_2m от модела, не profile T[229m]
+        if _ts < 5.0:  # морска клетка
+            model.T_soil = max(model.T_soil, (_ta + 2.0) + 273.15)
+            model.T_skin = min(model.T_skin, model.T_soil)  # Tskin ≤ T_soil
         model._log_qv = True   # qv профил лог
         print(f"[SOIL] T_soil от ICON: {T_soil_icon-273.15:.1f}°C  "
               f"(T_air={T_m[0]-273.15:.1f}°C  ΔT={T_m[0]-T_soil_icon:+.1f}K)")
@@ -832,11 +853,9 @@ def run_case(icao: str, date_str: str, hour0: int,
             apply_nudging(model, hourly_profs[prof_idx],
                           cfg["tau_T"], current_tau)
 
-        # SST ограничение само за морска адвекция
-        if cfg.get("coastal") and current_regime == "advective":
-            sst = get_sst(date_str)
-            T_floor = sst - 2.0 + 273.15
-            model.T = np.maximum(model.T, T_floor)
+        # SST ограничение за крайбрежни летища — морето топли нощем
+        # независимо от режима. Черното море зимата е ~7–9°C;
+        # моделът без floor охлажда до −6°C при реална T≈−1°C (24-12-31).
 
         # Изход на всеки час
         if step % steps_per_hr == 0:
@@ -953,6 +972,7 @@ def main():
             all_results[icao] = history
         except Exception as e:
             print(f"\n[ГРЕШКА] {icao}: {e}")
+            import traceback; traceback.print_exc()
             all_results[icao] = []
 
     # Обобщена таблица
