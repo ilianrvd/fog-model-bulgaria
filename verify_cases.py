@@ -215,7 +215,12 @@ def run_model(icao, date_str, hour, obs_list):
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
         model.T_soil = float(T_soil_icon)
-        model.T_skin = min(float(T_soil_icon), model.T[0])
+        # fix_soil (LBWN): ICON морска клетка дава T_soil=0-3°C при
+        # реални 8-14°C — коригираме до T_air_2m + 2°C (model.T[0] е
+        # приземното ниво от METAR след build_surface_layer)
+        if cfg.get("fix_soil") and (model.T_soil - 273.15) < 5.0:
+            model.T_soil = max(model.T_soil, float(model.T[0]) + 2.0)
+        model.T_skin = min(float(model.T_soil), model.T[0])
 
     ql_init_raw = profile.get("ql_init")
     if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
@@ -249,9 +254,30 @@ def run_model(icao, date_str, hour, obs_list):
             remaining = hourly_profs[prof_idx:]
             if len(remaining) < 3:
                 remaining = hourly_profs[-3:]
+
+            # D4 FIX (само за крайбрежни): текущ ICON вятър вместо {} —
+            # при Варна/Бургас ICON вятърът е надежден адвективен сигнал;
+            # при София котловината ICON надценява вятъра под инверсия
+            # (01-19) → континенталните запазват старото поведение ({}).
+            #
+            # ЗАБЕЛЕЖКА (18.07.2026): унифицираният осреднен вятър тестван
+            # и отхвърлен — вижте run_case.py за детайли. Върнато coastal-only.
+            if cfg.get("coastal"):
+                _cur_wp = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
+                _cur_u = float(_cur_wp["u"][0]) if "u" in _cur_wp else 0.0
+                _cur_v = float(_cur_wp["v"][0]) if "v" in _cur_wp else 0.0
+                _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
+                metar_reassess = {"wind_speed": _cur_wspd_kt}
+            else:
+                # Континентални: замразеният стартов METAR (както run_case),
+                # НЕ празен {} — иначе V_sfc=0 и при стартов вятър >4 m/s
+                # (03-14: 27008KT=4.1 m/s) reassessment губи DYNAMIC режима
+                # и охлажда свободно под облаци → -22°C артефакт.
+                metar_reassess = metar_dict
+
             _old = sys.stdout; sys.stdout = _io.StringIO()
             cand_regime, cand_tau, cand_reason = diagnose_regime(
-                {"hourly_profiles": remaining}, {}, cfg)
+                {"hourly_profiles": remaining}, metar_reassess, cfg)
             sys.stdout = _old
 
             if is_sunrise and current_regime == "radiative":
@@ -278,6 +304,7 @@ def run_model(icao, date_str, hour, obs_list):
         if current_tau and hourly_profs:
             apply_nudging(model, hourly_profs[prof_idx],
                           cfg["tau_T"], current_tau)
+
         if step % steps_per_hr == 0:
             model.diagnose()
 

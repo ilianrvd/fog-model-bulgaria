@@ -13,10 +13,6 @@ python run_case.py --date 2026-07-01 --hour 18 --hours 12 --no-nudge
 """
 
 import sys, os, argparse, json, urllib.request, urllib.parse
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
 import numpy as np
 from datetime import datetime, timezone, timedelta
 
@@ -28,8 +24,8 @@ from output        import save_surface_csv, plot_forecast, print_summary_report
 
 AIRPORT_CONFIG = {
     "LBSF": {"coastal": False, "N_d": 300e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBWN": {"fix_soil": True, "coastal": True,  "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (20, 160)},
-    "LBBG": {"coastal": True,  "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (30, 170)},
+    "LBWN": {"coastal": True,  "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
+    "LBBG": {"coastal": True,  "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None},
     "LBPD": {"coastal": False, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
     "LBGO": {"coastal": False, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
 }
@@ -727,16 +723,7 @@ def run_case(icao: str, date_str: str, hour0: int,
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
         model.T_soil = float(T_soil_icon)
-        # fix_soil (LBWN): Варна е в процеп между езеро и море — ICON
-        # няма наземна клетка там, T_soil идва морска (0-3°C вместо
-        # реални 8-14°C), което убива почвения топлинен поток и
-        # причинява тежко преохлаждане. Корекция: T_soil = max(ICON,
-        # T_air_2m + 2°C) само когато ICON < 5°C (ясен признак за морска
-        # клетка). model.T[0] тук е приземното ниво НА МОДЕЛА (от METAR
-        # чрез build_surface_layer), не ICON профилното ниво на 229m.
-        if cfg.get("fix_soil") and (model.T_soil - 273.15) < 5.0:
-            model.T_soil = max(model.T_soil, float(model.T[0]) + 2.0)
-        model.T_skin = float(model.T_soil)   # старт: повърхността ≈ почвата
+        model.T_skin = float(T_soil_icon)   # старт: повърхността ≈ почвата
         model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
         model._log_qv = True   # qv профил лог
         print(f"[SOIL] T_soil от ICON: {T_soil_icon-273.15:.1f}°C  "
@@ -803,34 +790,10 @@ def run_case(icao: str, date_str: str, hour0: int,
             remaining_profs = hourly_profs[prof_idx:]
             if len(remaining_profs) < 3:
                 remaining_profs = hourly_profs[-3:]
-
-            # D4 FIX (само за крайбрежни летища): подаваме текущия ICON
-            # приземен вятър вместо замразения стартов METAR. При Варна/
-            # Бургас ICON вятърът е надежден сигнал за адвекция (11-20,
-            # 03-14). При София котловината ICON НАДЦЕНЯВА приземния
-            # вятър под инверсия (01-19: ICON 4.9-7 m/s при реално тихо)
-            # → фалшиви DYNAMIC превключвания убиват мъглата. Затова
-            # континенталните летища запазват старото поведение.
-            #
-            # ЗАБЕЛЕЖКА (18.07.2026): опитахме унифицирано осреднен вятър
-            # (7/4kt hysteresis) за всички летища — Варна/Бургас/Горна:
-            # без ефект; София: нетна загуба (CLDY регресии се върнаха).
-            # Върнато към coastal-only. Decoupling-осъзнат подход е
-            # следващият кандидат, не уеднаквено вятърно правило.
-            if cfg.get("coastal"):
-                _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
-                _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
-                _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
-                _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
-                metar_reassess = dict(metar_dict)
-                metar_reassess["wind_speed"] = _cur_wspd_kt
-            else:
-                metar_reassess = metar_dict
-
             _old_stdout = _sys.stdout
             _sys.stdout = io.StringIO()
             cand_regime, cand_tau, cand_reason = diagnose_regime(
-                {"hourly_profiles": remaining_profs}, metar_reassess, cfg)
+                {"hourly_profiles": remaining_profs}, metar_dict, cfg)
             _sys.stdout = _old_stdout
 
             # ── Специални правила за изгрев/залез ──
@@ -877,6 +840,16 @@ def run_case(icao: str, date_str: str, hour0: int,
         if use_nudging and current_tau and hourly_profs:
             apply_nudging(model, hourly_profs[prof_idx],
                           cfg["tau_T"], current_tau)
+
+        # SST ограничение за крайбрежни летища — морето топли нощем
+        # независимо от режима. Черното море зимата е ~7–9°C;
+        # моделът без floor охлажда до −6°C при реална T≈−1°C (24-12-31).
+        if cfg.get("coastal"):
+            sst = get_sst(date_str)
+            T_floor   = (sst - 2.0) + 273.15  # приземен въздух
+            Ts_floor  = (sst - 3.0) + 273.15  # T_skin
+            model.T   = np.maximum(model.T, T_floor)
+            model.T_skin = max(model.T_skin, Ts_floor)
 
         # Изход на всеки час
         if step % steps_per_hr == 0:
