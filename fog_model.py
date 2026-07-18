@@ -801,9 +801,13 @@ class FogModel1D:
             _es0 = sat_vapor_pressure(np.array([float(T_new[0])]))[0]
             _qs0 = eps_r * _es0 / (float(self.p[0]) - _es0)
             _rh0 = float(qv_new[0]) / max(_qs0, 1e-9)
-            if _rh0 > 0.95:
+            if _pr >= 0.1:
+                pass  # дъжд → реален облак, без дисконт
+            elif _rh0 > 0.95:
                 _lo = _lo * 0.2
             cf_now = 1.0 - (1.0 - _lo) * (1.0 - 0.7 * _mi) * (1.0 - 0.25 * _hi)
+            if _pr >= 0.1:
+                cf_now = max(cf_now, 0.8)
             cf_now = min(max(cf_now, 0.0), 1.0)
         else:
             _cfs = getattr(self, "cf_series", None)
