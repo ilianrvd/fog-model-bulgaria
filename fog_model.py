@@ -232,7 +232,13 @@ def seb_step(T_skin: float, T_soil: float,
     #    ИНАЧЕ: Crawford & Duchon (1999): eps = cf + (1−cf)·eps_clear,
     #    с eps_clear по Prata (1996). Облачността (cf от ICON) носи
     #    топлия LW_down в облачни нощи; ясните нощи охлаждат пълноценно.
-    is_fog = lwp_col > 0.005
+    # Праг 0.00005 kg/m² (не 0.005!) — калибриран по реални LWP стойности
+    # от модела: плитка радиационна мъгла (DZ_EFF=8m нощем) дава LWP от
+    # порядъка 0.0001-0.00015 kg/m² дори при солидна мъгла (VIS<600m,
+    # LBPD 2025-02-25) — старият праг 0.005 беше ~40-100x над реалния
+    # мащаб и никога не се задействаше, оставяйки eps_a да следва само
+    # ICON облачността дори при собствена мъгла на модела.
+    is_fog = lwp_col > 0.00005
     if is_fog:
         eps_a = 1.0
     else:
@@ -270,7 +276,7 @@ def seb_step(T_skin: float, T_soil: float,
               f"| dTskin={_dTs:+6.3f}K/step "
               f"Tskin={T_skin-273.15:+6.2f} Tair={T_air0-273.15:+6.2f} "
               f"Tsoil={T_soil-273.15:+6.2f} eps_a={eps_a:.3f} U={U_eff:.2f} "
-              f"cf={cf:.2f}", flush=True)
+              f"cf={cf:.2f} LWP={lwp_col:.5f}kg/m2 is_fog={is_fog}", flush=True)
     # ────────────────────────────────────────────────
 
     # 7. Прогностично уравнение
@@ -828,7 +834,7 @@ class FogModel1D:
         sin_el_seb = _sin_elevation(hour_now, self.day_of_year)
         if sin_el_seb > 0.1:          # ден — SW загрява PBL
             DZ_EFF_SEB = 500.0
-        elif lwp_col_seb > 0.005:     # мъгла нощем
+        elif lwp_col_seb > 0.00005:     # мъгла нощем (същия праг като is_fog)
             DZ_EFF_SEB = 50.0
         else:                          # ясна нощ
             # Плитък decoupled слой: реално изстиват първите метри,
