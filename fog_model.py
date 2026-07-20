@@ -459,10 +459,44 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     # Нагряване от LW [K/s]: охлаждане когато нетният upward flux нараства с z
     dQ_lw = -np.gradient(F_up - F_down, z) / (rho * cp)
 
+    # ── ВРЕМЕННА ДИАГНОСТИКА: обща LW оптична дебелина + ql профил ──
+    if (SEB_DEBUG or _os.environ.get("SEB_DEBUG") == "1") and abs(hour_utc - round(hour_utc)) < 0.009:
+        _tau_total = K_EXT_LW * lwp_path[-1]
+        print(f"    [2STREAM {hour_utc:4.1f}h] LWP_total={lwp_path[-1]:.6f}kg/m2 "
+              f"tau_LW={_tau_total:.4f} (1=непрозрачно) "
+              f"F_up[0]={F_up[0]:.1f} F_down[0]={F_down[0]:.1f}", flush=True)
+        _fog_lv = [(round(float(z[i]),2), round(float(ql[i]*1000),3))
+                   for i in range(len(z)) if ql[i] > 1e-6]
+        if _fog_lv:
+            print(f"    [QL-ПРОФИЛ] нива с мъгла (z[m], LWC g/kg): {_fog_lv}", flush=True)
+        else:
+            print(f"    [QL-ПРОФИЛ] няма кондензация", flush=True)
+    # ────────────────────────────────────────────────
+
     # Физическо ограничение: LW охлаждане не може да надвишава
     # ~1 K/hr при мъгла и ~0.3 K/hr при ясно небе
     # Реални стойности от PAFOG верификации: макс ~0.8 K/hr в мъглата
     lwp_col = float(lwp_path[-1])
+
+    # ── Радиационно екраниране ВЪТРЕ в мъглата (19.07.2026) ──
+    # Консистентност със SEB is_fog фикса (праг 0.00005 kg/m²):
+    # SEB вече третира мъглата като черно тяло за T_skin; тук същото
+    # важи за въздушните нива ВЪТРЕ в мъгления слой. Физика (PAFOG):
+    # вътрешността на мъглата е радиационно екранирана — охлаждането
+    # се случва на ВЪРХА на мъглата, не вътре в нея. Без това моделната
+    # плитка мъгла (реално ~2m дълбока, LWP≈0.0001 → τ_LW≈0.015,
+    # прозрачна за многослойната схема) оставя T_air да се охлажда
+    # свободно, докато T_skin е стабилизирана → нефизично разкъсване
+    # T_skin/T_air (LBPD 2025-02-25: T_air −8.3°C при T_skin ~0°C).
+    # Вътре в мъглата: LW охлаждане ограничено до 0.15 K/hr.
+    if lwp_col > 0.00005:
+        _fog_mask = ql > 1e-6
+        if np.any(_fog_mask):
+            _fog_top_idx = int(np.max(np.where(_fog_mask)[0]))
+            _shield = -0.15 / 3600.0   # K/s
+            dQ_lw[:_fog_top_idx] = np.maximum(dQ_lw[:_fog_top_idx], _shield)
+    # ────────────────────────────────────────────────
+
     # max_cool варира плавно с LWP
     # при ясно: 0.8 K/hr (реални decoupled тихи нощи: 0.5–1.5 K/hr);
     # при мъгла (LWP~0.05 kg/m²): ~1.2 K/hr
