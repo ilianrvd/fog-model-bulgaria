@@ -132,7 +132,7 @@ def vis_to_metar_category(vis_m: float) -> str:
     """ICAO MET категория по видимост."""
     if vis_m < 200:   return "LIFR"
     if vis_m < 600:   return "IFR"
-    if vis_m < 800:   return "MVFR"
+    if vis_m < 1000:  return "MVFR"
     return "VFR"
 
 
