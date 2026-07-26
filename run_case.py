@@ -195,6 +195,20 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
                 wt   = np.exp(-zt/80.)
                 prof_t["qv"] += (qv0t - prof_t["qv"][0]) * wt
                 prof_t["qv"]  = np.maximum(prof_t["qv"], 1e-8)
+            # Приземна корекция на вятъра с ICON 10m продукт — същата
+            # схема като при началния профил (t0). Без нея почасовите
+            # профили носят чистия вятър от 1000 hPa баричното ниво,
+            # който близо до земята се разминава силно с 10m полето
+            # (LBWN 24.07.2026: 2.8kt барично срещу 9kt METAR/10m).
+            # Това правеше reassessment сляп за реалния вятър, докато
+            # началната диагноза (която ползва корекцията) беше вярна.
+            if ws10_t is not None and wd10_t is not None:
+                ws_ms_t = float(ws10_t) * (1000/3600)
+                u10_t   = -ws_ms_t * np.sin(np.deg2rad(float(wd10_t)))
+                v10_t   = -ws_ms_t * np.cos(np.deg2rad(float(wd10_t)))
+                wtw     = np.exp(-zt/100.)
+                prof_t["u"] = prof_t["u"] + (u10_t - prof_t["u"][0]) * wtw
+                prof_t["v"] = prof_t["v"] + (v10_t - prof_t["v"][0]) * wtw
             hourly_profiles.append(prof_t)
 
     print(f"[ICON-EU HIST] Nudging профили: {len(hourly_profiles)} часа")
@@ -674,7 +688,8 @@ def build_surface_layer(profile: dict, metar: dict, doy: int) -> dict:
 def run_case(icao: str, date_str: str, hour0: int,
              metar_raw: str | None, hours: float = 12.0,
              dt: float = 60.0, use_nudging: bool = True,
-             out_dir: str = "case_output") -> list:
+             out_dir: str = "case_output",
+             obs_hourly: list = None) -> list:
 
     cfg = AIRPORT_CONFIG[icao]
     print(f"\n{'═'*60}")
@@ -769,11 +784,18 @@ def run_case(icao: str, date_str: str, hour0: int,
 
     model.diagnose()
     r0 = model.history[-1]
-    print(f"\n{'Час UTC':>8} | {'T°C':>6} | {'RH%':>5} | {'LWC g/m³':>9} | {'VIS m':>7} | CAT")
-    print("-"*55)
+    print(f"\n{'Час UTC':>8} | {'T°C':>6} | {'RH%':>5} | {'LWC g/m³':>9} | {'VIS m':>7} | CAT | {'V_ICON':>8} | {'cf':>5} | {'V_MET':>5} | {'T_MET':>5}")
+    print("-"*93)
+    # ICON вятър и cf при старта
+    _ip0 = hourly_profs[0] if hourly_profs else {}
+    _u0 = float(_ip0.get("u",[0])[0]); _v0 = float(_ip0.get("v",[0])[0])
+    _w0_kt = ((_u0**2+_v0**2)**0.5)/0.5144
+    _cf0 = float(model.cc_series[0][0]*0.4 + model.cc_series[0][1]*0.7 + model.cc_series[0][2]*0.25) if model.cc_series else 0.0
+    _v0m = f"{metar_dict.get('wind_speed',0.0):5.1f}" if metar_dict.get('wind_speed') is not None else "   --"
+    _t0m = f"{metar_dict.get('T',0.0):5.1f}" if metar_dict.get('T') is not None else "   --"
     print(f"{r0['hour_utc']:8.1f} | {r0['T_sfc']-273.15:6.1f} | "
           f"{r0['rh_sfc']*100:5.1f} | {r0['ql_sfc']*1000:9.4f} | "
-          f"{r0['vis_sfc']:7.0f} | {r0['cat']}")
+          f"{r0['vis_sfc']:7.0f} | {r0['cat']:3} | {_w0_kt:8.1f} | {_cf0:5.2f} | {_v0m:>5} | {_t0m:>5}")
 
     # Текущ режим и tau — ще се преоценяват hourly
     current_regime = regime
@@ -819,6 +841,10 @@ def run_case(icao: str, date_str: str, hour0: int,
             # следващият кандидат, не уеднаквено вятърно правило.
             if cfg.get("coastal"):
                 _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
+                # z[0] е най-ниското ICON БАРИЧНО ниво (~30-100m AGL,
+                # зависи от летището), НЕ приземно 10m ниво. Опитът за
+                # "корекция към 10m" (24.07.2026) беше безсмислен —
+                # такова ниво няма в профила, argmin връща същия индекс 0.
                 _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
                 _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
                 _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
@@ -881,9 +907,27 @@ def run_case(icao: str, date_str: str, hour0: int,
         # Изход на всеки час
         if step % steps_per_hr == 0:
             r = model.diagnose()
+            # ICON вятър и cf за текущия час
+            # V_ICON е на най-ниското ICON барично ниво (~30-100m AGL)
+            _pi = hourly_profs[min(prof_idx, len(hourly_profs)-1)] if hourly_profs else {}
+            _ui = float(_pi.get("u",[0])[0]); _vi = float(_pi.get("v",[0])[0])
+            _wi_kt = ((_ui**2+_vi**2)**0.5)/0.5144
+            _cci = model.cc_series[min(int(model.time//3600), len(model.cc_series)-1)] if model.cc_series else [0,0,0]
+            _cfi = float(_cci[0]*0.4 + _cci[1]*0.7 + _cci[2]*0.25)
+            import re as _re
+            _vm = '--'; _tm = '--'
+            if obs_hourly:
+                _th = int(r['hour_utc']) % 24
+                for _o in obs_hourly:
+                    _rm = _re.search(r'T(\d{2}):\d{2}', _o.get('time',''))
+                    if _rm and int(_rm.group(1)) == _th:
+                        _pm = parse_metar(_o.get('raw',''))
+                        if _pm.get('wind_speed') is not None: _vm = f"{_pm['wind_speed']:.0f}"
+                        if _pm.get('T') is not None: _tm = f"{_pm['T']:.1f}"
+                        break
             print(f"{r['hour_utc']:8.1f} | {r['T_sfc']-273.15:6.1f} | "
                   f"{r['rh_sfc']*100:5.1f} | {r['ql_sfc']*1000:9.4f} | "
-                  f"{r['vis_sfc']:7.0f} | {r['cat']}")
+                  f"{r['vis_sfc']:7.0f} | {r['cat']:3} | {_wi_kt:8.1f} | {_cfi:5.2f} | {_vm:>5} | {_tm:>5}")
 
 
     # 5. Изход
@@ -989,6 +1033,7 @@ def main():
                 dt         = args.dt,
                 use_nudging= not args.no_nudge,
                 out_dir    = args.out,
+                obs_hourly = all_metars.get("_raw", {}).get(icao, []),
             )
             all_results[icao] = history
         except Exception as e:
