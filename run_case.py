@@ -75,6 +75,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
     surface_vars = [
         "temperature_2m", "dewpoint_2m", "surface_pressure",
         "windspeed_10m",  "winddirection_10m", "relativehumidity_2m",
+        "windgusts_10m",
         "soil_temperature_0cm",   # за Force-Restore soil flux
         "cloudcover", "cloudcover_low", "cloudcover_mid", "cloudcover_high",
         "precipitation",
@@ -185,6 +186,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
             Td2m_t = hourly.get("dewpoint_2m",       [None]*len(times))[ti]
             ws10_t = hourly.get("windspeed_10m",     [None]*len(times))[ti]
             wd10_t = hourly.get("winddirection_10m", [None]*len(times))[ti]
+            gst_t  = hourly.get("windgusts_10m",     [None]*len(times))[ti]
             zt = prof_t["z"]
             if T2m_t is not None:
                 wt = np.exp(-zt/80.)
@@ -209,6 +211,8 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
                 wtw     = np.exp(-zt/100.)
                 prof_t["u"] = prof_t["u"] + (u10_t - prof_t["u"][0]) * wtw
                 prof_t["v"] = prof_t["v"] + (v10_t - prof_t["v"][0]) * wtw
+            # ICON порив (km/h → kt); None ако липсва
+            prof_t["gust10"] = (float(gst_t) / 1.852) if gst_t is not None else None
             hourly_profiles.append(prof_t)
 
     print(f"[ICON-EU HIST] Nudging профили: {len(hourly_profiles)} часа")
@@ -784,18 +788,20 @@ def run_case(icao: str, date_str: str, hour0: int,
 
     model.diagnose()
     r0 = model.history[-1]
-    print(f"\n{'Час UTC':>8} | {'T°C':>6} | {'RH%':>5} | {'LWC g/m³':>9} | {'VIS m':>7} | CAT | {'V_ICON':>8} | {'cf':>5} | {'V_MET':>5} | {'T_MET':>5}")
-    print("-"*93)
+    print(f"\n{'Час UTC':>8} | {'T°C':>6} | {'RH%':>5} | {'LWC g/m³':>9} | {'VIS m':>7} | CAT | {'V_ICON':>8} | {'Gust':>5} | {'cf':>5} | {'V_MET':>5} | {'T_MET':>5}")
+    print("-"*101)
     # ICON вятър и cf при старта
     _ip0 = hourly_profs[0] if hourly_profs else {}
     _u0 = float(_ip0.get("u",[0])[0]); _v0 = float(_ip0.get("v",[0])[0])
     _w0_kt = ((_u0**2+_v0**2)**0.5)/0.5144
     _cf0 = float(model.cc_series[0][0]*0.4 + model.cc_series[0][1]*0.7 + model.cc_series[0][2]*0.25) if model.cc_series else 0.0
+    _g0 = _ip0.get("gust10") if _ip0 else None
+    _g0s = f"{_g0:5.1f}" if _g0 is not None else "   --"
     _v0m = f"{metar_dict.get('wind_speed',0.0):5.1f}" if metar_dict.get('wind_speed') is not None else "   --"
     _t0m = f"{metar_dict.get('T',0.0):5.1f}" if metar_dict.get('T') is not None else "   --"
     print(f"{r0['hour_utc']:8.1f} | {r0['T_sfc']-273.15:6.1f} | "
           f"{r0['rh_sfc']*100:5.1f} | {r0['ql_sfc']*1000:9.4f} | "
-          f"{r0['vis_sfc']:7.0f} | {r0['cat']:3} | {_w0_kt:8.1f} | {_cf0:5.2f} | {_v0m:>5} | {_t0m:>5}")
+          f"{r0['vis_sfc']:7.0f} | {r0['cat']:3} | {_w0_kt:8.1f} | {_g0s:>5} | {_cf0:5.2f} | {_v0m:>5} | {_t0m:>5}")
 
     # Текущ режим и tau — ще се преоценяват hourly
     current_regime = regime
@@ -840,16 +846,36 @@ def run_case(icao: str, date_str: str, hour0: int,
             # Върнато към coastal-only. Decoupling-осъзнат подход е
             # следващият кандидат, не уеднаквено вятърно правило.
             if cfg.get("coastal"):
+                # ── ЕКСПЕРИМЕНТ 26.07.2026: двоен критерий вятър+порив ──
+                # Само LBWN/LBBG, само reassessment. Праговете НЕ се
+                # променят по стойност, а по величина:
+                #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
+                #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
+                #   смесено                       :  запазва текущия режим
+                # Вариант Б: при смесено/тихо и текущ НЕ-DYNAMIC подаваме
+                # реалния вятър, за да остане възможен ADVECTIVE клонът.
+                # Fallback към старото поведение, ако поривът липсва.
                 _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
-                # z[0] е най-ниското ICON БАРИЧНО ниво (~30-100m AGL,
-                # зависи от летището), НЕ приземно 10m ниво. Опитът за
-                # "корекция към 10m" (24.07.2026) беше безсмислен —
-                # такова ниво няма в профила, argmin връща същия индекс 0.
                 _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
                 _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
                 _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
+                _gust_kt = _cur_wind.get("gust10")
+
                 metar_reassess = dict(metar_dict)
-                metar_reassess["wind_speed"] = _cur_wspd_kt
+                if _gust_kt is None:
+                    metar_reassess["wind_speed"] = _cur_wspd_kt
+                elif current_regime == "dynamic":
+                    # Излизане само ако И двете са под праг
+                    if _cur_wspd_kt < 4.0 and _gust_kt < 8.0:
+                        metar_reassess["wind_speed"] = 0.0
+                    else:
+                        metar_reassess["wind_speed"] = 20.0
+                else:
+                    # Влизане само ако И двете са над праг
+                    if _cur_wspd_kt >= 4.0 and _gust_kt >= 8.0:
+                        metar_reassess["wind_speed"] = 20.0
+                    else:
+                        metar_reassess["wind_speed"] = _cur_wspd_kt
             else:
                 metar_reassess = metar_dict
 
@@ -912,6 +938,8 @@ def run_case(icao: str, date_str: str, hour0: int,
             _pi = hourly_profs[min(prof_idx, len(hourly_profs)-1)] if hourly_profs else {}
             _ui = float(_pi.get("u",[0])[0]); _vi = float(_pi.get("v",[0])[0])
             _wi_kt = ((_ui**2+_vi**2)**0.5)/0.5144
+            _gi = _pi.get("gust10") if _pi else None
+            _gis = f"{_gi:5.1f}" if _gi is not None else "   --"
             _cci = model.cc_series[min(int(model.time//3600), len(model.cc_series)-1)] if model.cc_series else [0,0,0]
             _cfi = float(_cci[0]*0.4 + _cci[1]*0.7 + _cci[2]*0.25)
             import re as _re
@@ -927,7 +955,7 @@ def run_case(icao: str, date_str: str, hour0: int,
                         break
             print(f"{r['hour_utc']:8.1f} | {r['T_sfc']-273.15:6.1f} | "
                   f"{r['rh_sfc']*100:5.1f} | {r['ql_sfc']*1000:9.4f} | "
-                  f"{r['vis_sfc']:7.0f} | {r['cat']:3} | {_wi_kt:8.1f} | {_cfi:5.2f} | {_vm:>5} | {_tm:>5}")
+                  f"{r['vis_sfc']:7.0f} | {r['cat']:3} | {_wi_kt:8.1f} | {_gis:>5} | {_cfi:5.2f} | {_vm:>5} | {_tm:>5}")
 
 
     # 5. Изход
