@@ -1,0 +1,9 @@
+[
+  {
+    "date": "2024-12-30",
+    "hour": 18,
+    "icao": "LBSF",
+    "note": "Класическа радиационна FZFG — еталон",
+    "error": "find_obs_at() missing 2 required positional arguments: 'target_hour' and 'date_str'"
+  }
+]

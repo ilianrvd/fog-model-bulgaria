@@ -1,0 +1,14 @@
+###  качване от лаптопа в github####
+git add docs/ results/
+git commit -m "Operational forecast update"
+git pull origin main --rebase
+git push
+
+python run_case.py --date 2024-12-30 --hour 18 --hours 12 --metar-source ogimet --airports LBSF --verify
+
+
+#### при проблеми с ъпдейта
+git stash
+git pull origin main --rebase
+git stash pop
+git push

@@ -1,0 +1,137 @@
+{
+  "run_utc": "2026-07-14_1037",
+  "config": {
+    "RH_CRIT": 0.995,
+    "DZ_EFF_values": [
+      500.0,
+      50.0,
+      8.0
+    ],
+    "max_cool": "0.8 + 0.4 * np.tanh(lwp_col / 0.02)   # K/hr",
+    "fog_model_md5": "55ddde84b2",
+    "AIRPORT_CONFIG": {
+      "LBSF": {
+        "coastal": false,
+        "N_d": 300000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBWN": {
+        "coastal": true,
+        "N_d": 50000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null
+      },
+      "LBBG": {
+        "coastal": true,
+        "N_d": 80000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null
+      },
+      "LBPD": {
+        "coastal": false,
+        "N_d": 200000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBGO": {
+        "coastal": false,
+        "N_d": 150000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      }
+    }
+  },
+  "results": [
+    {
+      "case_id": "LBSF_CDRY_2025-02-10",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-02-13",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-03-20",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-03-20",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-12-19",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-12-19",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-12-30",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-12-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-12-31",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-12-31",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-03-29",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-03-29",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-03-30",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-03-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-03-31",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-03-31",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-08",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-08",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-22",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-22",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-24",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-24",
+      "error": "bad operand type for unary -: 'list'"
+    }
+  ],
+  "regressions": []
+}

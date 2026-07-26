@@ -1,0 +1,1867 @@
+{
+  "run_utc": "2026-07-18_0516",
+  "config": {
+    "RH_CRIT": 0.995,
+    "DZ_EFF_values": [
+      500.0,
+      50.0,
+      8.0
+    ],
+    "max_cool": "0.8 + 0.4 * np.tanh(lwp_col / 0.02)   # K/hr",
+    "fog_model_md5": "b6a91489f7",
+    "AIRPORT_CONFIG": {
+      "LBSF": {
+        "coastal": false,
+        "N_d": 300000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBWN": {
+        "fix_soil": true,
+        "coastal": true,
+        "N_d": 50000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null,
+        "sea_sector": [
+          20,
+          160
+        ]
+      },
+      "LBBG": {
+        "coastal": true,
+        "N_d": 80000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null,
+        "sea_sector": [
+          30,
+          170
+        ]
+      },
+      "LBPD": {
+        "coastal": false,
+        "N_d": 200000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBGO": {
+        "coastal": false,
+        "N_d": 150000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      }
+    }
+  },
+  "results": [
+    {
+      "case_id": "LBGO_CDRY_2024-10-20",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-10-20",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 10,
+          "cn": 6,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 5963.666417066133
+        },
+        "T": {
+          "MAE": 3.123222527353448,
+          "Tmin_err": -3.4295847009453837,
+          "err_0306": 1.8832077151856481
+        },
+        "mod_min_vis": 267.90648437227543
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2024-10-28",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-10-28",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 643.75
+        },
+        "T": {
+          "MAE": 2.5897334695696976,
+          "Tmin_err": 1.9304779162442287,
+          "err_0306": 1.7809463263846794
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2024-11-03",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-11-03",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 4.696816761055818,
+          "Tmin_err": 4.110309534110911,
+          "err_0306": 4.585662905882614
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=4.4K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 5.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2024-11-18",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-11-18",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 1,
+          "fa": 1,
+          "cn": 14,
+          "POD": 0.0,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 3480.356839819345
+        },
+        "T": {
+          "MAE": 2.1290404289557365,
+          "Tmin_err": 0.16294240854574582,
+          "err_0306": 1.3741601727263628
+        },
+        "mod_min_vis": 628.9825548922372
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2024-12-13",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-12-13",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 11,
+          "cn": 5,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 6854.519503034268
+        },
+        "T": {
+          "MAE": 2.594269768431726,
+          "Tmin_err": -3.7311366581477614,
+          "err_0306": 2.6382322333623733
+        },
+        "mod_min_vis": 532.6321768786859
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2024-12-19",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2024-12-19",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 6,
+          "cn": 10,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 4245.264588674794
+        },
+        "T": {
+          "MAE": 1.8341044998972151,
+          "Tmin_err": 0.6924419332310094,
+          "err_0306": 1.8827166998440248
+        },
+        "mod_min_vis": 495.287251639648
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 1.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.1K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 4.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-01-04",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-01-04",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 1.1105265030995035,
+          "Tmin_err": 1.835036506587187,
+          "err_0306": 1.025465253697007
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 4.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.2K > 2K → адвекция на въздушна маса"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-01-25",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-01-25",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 1250.0
+        },
+        "T": {
+          "MAE": 3.0096746209597,
+          "Tmin_err": 5.060000000000002,
+          "err_0306": 4.608565447573426
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.7K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 1.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-02-14",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-02-14",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 3,
+          "cn": 13,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 2039.8655154973326
+        },
+        "T": {
+          "MAE": 2.8780156490700435,
+          "Tmin_err": -2.4718461906949756,
+          "err_0306": 1.3234814550601612
+        },
+        "mod_min_vis": 201.72069871650018
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-02-21",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-02-21",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 500.0
+        },
+        "T": {
+          "MAE": 4.476465979594309,
+          "Tmin_err": 6.489371339289619,
+          "err_0306": 6.62727474279221
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 2.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.4K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 6.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-03-05",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-03-05",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 7,
+          "cn": 9,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 4152.2087743676275
+        },
+        "T": {
+          "MAE": 1.7797926369413481,
+          "Tmin_err": -0.9840680621715592,
+          "err_0306": 1.1061302867000649
+        },
+        "mod_min_vis": 526.2387403671469
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CDRY_2025-03-07",
+      "icao": "LBGO",
+      "category": "CDRY",
+      "date": "2025-03-07",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 2.9190161344226375,
+          "Tmin_err": 3.376823208748931,
+          "err_0306": 2.8411575287281465
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-02-17",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-02-17",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 0.0,
+        "hourly": {
+          "hits": 6,
+          "misses": 1,
+          "fa": 3,
+          "cn": 6,
+          "POD": 0.8571428571428571,
+          "FAR": 0.3333333333333333,
+          "CSI": 0.6,
+          "MAE_VIS": 2698.7820065735127
+        },
+        "T": {
+          "MAE": 2.3826557531104307,
+          "Tmin_err": -8.002917608306802,
+          "err_0306": 0.3734696666408439
+        },
+        "mod_min_vis": 154.50454809828886
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-03-03",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-03-03",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 4.0,
+        "hourly": {
+          "hits": 0,
+          "misses": 2,
+          "fa": 1,
+          "cn": 13,
+          "POD": 0.0,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 3250.383410939728
+        },
+        "T": {
+          "MAE": 2.925355090650733,
+          "Tmin_err": 1.5469352522695772,
+          "err_0306": 2.2620742610538542
+        },
+        "mod_min_vis": 450.6426569632122
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-03-16",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-03-16",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": -4.0,
+        "hourly": {
+          "hits": 1,
+          "misses": 0,
+          "fa": 9,
+          "cn": 6,
+          "POD": 1.0,
+          "FAR": 0.9,
+          "CSI": 0.1,
+          "MAE_VIS": 4366.578050404229
+        },
+        "T": {
+          "MAE": 3.0048474121178437,
+          "Tmin_err": -1.422774569140131,
+          "err_0306": 1.4999871633811068
+        },
+        "mod_min_vis": 391.3058230206551
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-10-22",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-10-22",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": -1.0,
+        "hourly": {
+          "hits": 1,
+          "misses": 0,
+          "fa": 7,
+          "cn": 8,
+          "POD": 1.0,
+          "FAR": 0.875,
+          "CSI": 0.125,
+          "MAE_VIS": 3370.268377052056
+        },
+        "T": {
+          "MAE": 3.6610761119111324,
+          "Tmin_err": -3.004989635810489,
+          "err_0306": 1.5040142844552236
+        },
+        "mod_min_vis": 181.73121781125286
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-10-24",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-10-24",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 1,
+          "fa": 3,
+          "cn": 12,
+          "POD": 0.0,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 4086.674369775308
+        },
+        "T": {
+          "MAE": 4.172889187518582,
+          "Tmin_err": -9.1162631263158,
+          "err_0306": 2.4434693255699926
+        },
+        "mod_min_vis": 133.7390479801867
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-11-01",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-11-01",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 3,
+          "fa": 0,
+          "cn": 13,
+          "POD": 0.0,
+          "FAR": null,
+          "CSI": 0.0,
+          "MAE_VIS": 2950.0
+        },
+        "T": {
+          "MAE": 3.166799296592167,
+          "Tmin_err": 3.2695567733478583,
+          "err_0306": 3.7100580556017064
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-11-16",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-11-16",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 9,
+          "fa": 3,
+          "cn": 4,
+          "POD": 0.0,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 8002.968607279105
+        },
+        "T": {
+          "MAE": 2.866014416816281,
+          "Tmin_err": -1.0706878799157948,
+          "err_0306": 1.3477412229384385
+        },
+        "mod_min_vis": 271.3743535568538
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.0K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 22.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-11-17",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-11-17",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": -1.0,
+        "hourly": {
+          "hits": 6,
+          "misses": 0,
+          "fa": 7,
+          "cn": 3,
+          "POD": 1.0,
+          "FAR": 0.5384615384615384,
+          "CSI": 0.46153846153846156,
+          "MAE_VIS": 3480.216392877479
+        },
+        "T": {
+          "MAE": 2.7905513615114117,
+          "Tmin_err": -4.1695253085786135,
+          "err_0306": 2.9935196014247367
+        },
+        "mod_min_vis": 524.3746988402532
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-11-27",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-11-27",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 5,
+          "cn": 11,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 2091.1820339051083
+        },
+        "T": {
+          "MAE": 2.729624816280932,
+          "Tmin_err": -2.5463199906975547,
+          "err_0306": 3.1248558089595377
+        },
+        "mod_min_vis": 538.522096456165
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-12-30",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-12-30",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": -1.0,
+        "hourly": {
+          "hits": 5,
+          "misses": 2,
+          "fa": 3,
+          "cn": 6,
+          "POD": 0.7142857142857143,
+          "FAR": 0.375,
+          "CSI": 0.5,
+          "MAE_VIS": 2624.618861669942
+        },
+        "T": {
+          "MAE": 1.9205670924155633,
+          "Tmin_err": -2.101521016773006,
+          "err_0306": 4.066949395962368
+        },
+        "mod_min_vis": 507.84269778378865
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 3.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=3.7K > 2K → адвекция на въздушна маса"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2024-12-31",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2024-12-31",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 13,
+          "cn": 3,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 3157.8341374521397
+        },
+        "T": {
+          "MAE": 3.110917591100087,
+          "Tmin_err": -3.531045176833004,
+          "err_0306": 3.6219306184569007
+        },
+        "mod_min_vis": 523.0292141125616
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-01-26",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-01-26",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 2,
+          "misses": 5,
+          "fa": 0,
+          "cn": 9,
+          "POD": 0.2857142857142857,
+          "FAR": 0.0,
+          "CSI": 0.2857142857142857,
+          "MAE_VIS": 4648.104920713545
+        },
+        "T": {
+          "MAE": 1.8915655023232993,
+          "Tmin_err": -0.732379544261164,
+          "err_0306": 0.7394902961456467
+        },
+        "mod_min_vis": 627.2038887869561
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 23.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.2K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 5.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-01-31",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-01-31",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 1.0,
+        "hourly": {
+          "hits": 12,
+          "misses": 2,
+          "fa": 2,
+          "cn": 0,
+          "POD": 0.8571428571428571,
+          "FAR": 0.14285714285714285,
+          "CSI": 0.75,
+          "MAE_VIS": 1746.5212138070806
+        },
+        "T": {
+          "MAE": 2.000247331614535,
+          "Tmin_err": -2.188762982754156,
+          "err_0306": 1.6016562012013793
+        },
+        "mod_min_vis": 453.15183451545516
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-02-01",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-02-01",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 7.0,
+        "hourly": {
+          "hits": 4,
+          "misses": 4,
+          "fa": 1,
+          "cn": 7,
+          "POD": 0.5,
+          "FAR": 0.2,
+          "CSI": 0.4444444444444444,
+          "MAE_VIS": 3127.596081356023
+        },
+        "T": {
+          "MAE": 1.5198205895174404,
+          "Tmin_err": -4.006008196593825,
+          "err_0306": 0.7225088456574866
+        },
+        "mod_min_vis": 169.7073590724195
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-02-20",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-02-20",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 3,
+          "fa": 0,
+          "cn": 13,
+          "POD": 0.0,
+          "FAR": null,
+          "CSI": 0.0,
+          "MAE_VIS": 4821.875
+        },
+        "T": {
+          "MAE": 4.574054872835401,
+          "Tmin_err": 6.060000000000002,
+          "err_0306": 7.311775633079719
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 1.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.1K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 3.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-02-25",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-02-25",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 5.0,
+        "hourly": {
+          "hits": 6,
+          "misses": 4,
+          "fa": 3,
+          "cn": 3,
+          "POD": 0.6,
+          "FAR": 0.3333333333333333,
+          "CSI": 0.46153846153846156,
+          "MAE_VIS": 5043.883274034813
+        },
+        "T": {
+          "MAE": 2.398903062314176,
+          "Tmin_err": -3.3220355766275134,
+          "err_0306": 2.806278818597576
+        },
+        "mod_min_vis": 173.09567530233355
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CFOG_2025-03-04",
+      "icao": "LBGO",
+      "category": "CFOG",
+      "date": "2025-03-04",
+      "eval": {
+        "event": "HIT",
+        "onset_dt_h": 4.0,
+        "hourly": {
+          "hits": 0,
+          "misses": 1,
+          "fa": 2,
+          "cn": 13,
+          "POD": 0.0,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 2800.969742218812
+        },
+        "T": {
+          "MAE": 1.1202605675509574,
+          "Tmin_err": 0.28747896766145686,
+          "err_0306": 1.040651140044929
+        },
+        "mod_min_vis": 567.3000015330257
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 5.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.2K > 2K → адвекция на въздушна маса"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2024-10-05",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2024-10-05",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 375.0
+        },
+        "T": {
+          "MAE": 2.142644963006365,
+          "Tmin_err": 0.7017228564468496,
+          "err_0306": 3.6014304699613575
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2024-11-24",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2024-11-24",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 3.6935926601078073,
+          "Tmin_err": -1.8328782842957025,
+          "err_0306": 4.461966313350189
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-01-14",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-01-14",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 0.5684213929345034,
+          "Tmin_err": 0.29943613319659335,
+          "err_0306": 0.898500470018746
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-02-03",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-02-03",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 1,
+          "fa": 0,
+          "cn": 15,
+          "POD": 0.0,
+          "FAR": null,
+          "CSI": 0.0,
+          "MAE_VIS": 2237.5
+        },
+        "T": {
+          "MAE": 1.6013580023893361,
+          "Tmin_err": 3.4502362617717495,
+          "err_0306": 3.0120400738804705
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.4K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 1.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 4.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=3.0K > 2K → адвекция на въздушна маса"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-02-07",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-02-07",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 0.7823633428156924,
+          "Tmin_err": 2.0320665678534624,
+          "err_0306": 1.2776600997435708
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-02-16",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-02-16",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 4358.419162423709
+        },
+        "T": {
+          "MAE": 1.3211057695693178,
+          "Tmin_err": 0.5855326421033169,
+          "err_0306": 2.2172320106414105
+        },
+        "mod_min_vis": 3725.5250588644094
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-02-28",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-02-28",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 5487.5
+        },
+        "T": {
+          "MAE": 0.6898871548728813,
+          "Tmin_err": 0.8049797657014892,
+          "err_0306": 0.9818316855104712
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_CLDY_2025-03-17",
+      "icao": "LBGO",
+      "category": "CLDY",
+      "date": "2025-03-17",
+      "eval": {
+        "event": "MISS",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 1143.75
+        },
+        "T": {
+          "MAE": 1.4970889377625198,
+          "Tmin_err": 0.31334820533527363,
+          "err_0306": 2.1348340424292047
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=10.3m/s > 4m/s → радиационна мъгла невъзможна"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-02-03",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-02-03",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 2.4212111277353507,
+          "Tmin_err": 2.0600000000000023,
+          "err_0306": 2.93025204173739
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "dynamic",
+          "reason": "Текущ V=10.3m/s > 4m/s → радиационна мъгла невъзможна"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-02-04",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-02-04",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 3.4823142489454746,
+          "Tmin_err": 1.0672047105115894,
+          "err_0306": 3.9684415740783123
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=5.7m/s > 4m/s → радиационна мъгла невъзможна"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-03-11",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-03-11",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 125.0
+        },
+        "T": {
+          "MAE": 1.724856899704406,
+          "Tmin_err": 1.6675577340669179,
+          "err_0306": 1.205923346668655
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=4.1m/s > 4m/s → радиационна мъгла невъзможна"
+        },
+        {
+          "hour_utc": 5.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-10-03",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-10-03",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 2,
+          "cn": 14,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 1198.314625444971
+        },
+        "T": {
+          "MAE": 3.96698258084265,
+          "Tmin_err": -3.783664758943928,
+          "err_0306": 3.462751110805769
+        },
+        "mod_min_vis": 278.50698864367183
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 22.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.5K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 1.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-11-19",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-11-19",
+      "eval": {
+        "event": "FA",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 1,
+          "cn": 15,
+          "POD": null,
+          "FAR": 1.0,
+          "CSI": 0.0,
+          "MAE_VIS": 1131.834835317814
+        },
+        "T": {
+          "MAE": 4.201246466128815,
+          "Tmin_err": -2.2159039237566844,
+          "err_0306": 2.1023133652934973
+        },
+        "mod_min_vis": 665.8554868415548
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=4.1m/s > 4m/s → радиационна мъгла невъзможна"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2024-12-17",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2024-12-17",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 2.3443268017082985,
+          "Tmin_err": 2.1463297603137903,
+          "err_0306": 1.5452316257693894
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 20.0,
+          "regime": "dynamic",
+          "reason": "Текущ V=10.3m/s > 4m/s → радиационна мъгла невъзможна"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2025-01-24",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2025-01-24",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 1.6412816774237058,
+          "Tmin_err": 2.8518225173441465,
+          "err_0306": 2.8010508676643298
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=4.1m/s > 4m/s → радиационна мъгла невъзможна"
+        },
+        {
+          "hour_utc": 7.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBGO_DYNM_2025-03-15",
+      "icao": "LBGO",
+      "category": "DYNM",
+      "date": "2025-03-15",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 2.3154337475580817,
+          "Tmin_err": 4.419806879355463,
+          "err_0306": 4.096194446983603
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "dynamic",
+          "reason": "Текущ V=9.3m/s > 4m/s → радиационна мъгла невъзможна"
+        },
+        {
+          "hour_utc": 0.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 5.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.8K > 2K → адвекция на въздушна маса"
+        }
+      ]
+    }
+  ],
+  "regressions": []
+}

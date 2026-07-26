@@ -1,0 +1,1007 @@
+{
+  "run_utc": "2026-07-14_1327",
+  "config": {
+    "RH_CRIT": 0.995,
+    "DZ_EFF_values": [
+      500.0,
+      50.0,
+      8.0
+    ],
+    "max_cool": "0.8 + 0.4 * np.tanh(lwp_col / 0.02)   # K/hr",
+    "fog_model_md5": "55ddde84b2",
+    "AIRPORT_CONFIG": {
+      "LBSF": {
+        "coastal": false,
+        "N_d": 300000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBWN": {
+        "coastal": true,
+        "N_d": 50000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null
+      },
+      "LBBG": {
+        "coastal": true,
+        "N_d": 80000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null
+      },
+      "LBPD": {
+        "coastal": false,
+        "N_d": 200000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBGO": {
+        "coastal": false,
+        "N_d": 150000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      }
+    }
+  },
+  "results": [
+    {
+      "case_id": "LBSF_CDRY_2024-01-14",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-01-14",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 16,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 3625.0
+        },
+        "T": {
+          "MAE": 1.2877404641011836,
+          "Tmin_err": 0.007710571542418165,
+          "err_0306": 0.8020018401983293
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 0.0,
+          "regime": "dynamic",
+          "reason": "ΔT850=2.2K > 2K → адвекция на въздушна маса"
+        },
+        {
+          "hour_utc": 2.0,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-01-30",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-01-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-01-31",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-01-31",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-02-06",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-02-06",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-02-15",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-02-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-04-05",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-04-05",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-05-07",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-05-07",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-06-01",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-06-01",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-06-15",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-06-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-06-28",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-06-28",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-07-05",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-07-05",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-09-03",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-09-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-09-22",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-09-22",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-07",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-07",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-08",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-08",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-10",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-16",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-16",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-22",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-22",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-23",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-23",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-25",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-25",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-27",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-27",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-10-28",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-10-28",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-11-06",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-11-06",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-12-17",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-12-17",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2024-12-22",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2024-12-22",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-01-05",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-01-05",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-01-20",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-01-20",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-01-26",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-01-26",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-01-27",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-01-27",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-02-01",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-01",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-02-10",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-02-11",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-02-13",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-02-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CDRY_2025-03-20",
+      "icao": "LBSF",
+      "category": "CDRY",
+      "date": "2025-03-20",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-01-10",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-01-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-03-02",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-03-02",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-10-13",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-10-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-10-21",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-10-21",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-10-30",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-10-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-11-16",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-11-16",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-12-19",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-12-19",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2024-12-30",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2024-12-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2025-01-01",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2025-01-01",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CFOG_2025-01-31",
+      "icao": "LBSF",
+      "category": "CFOG",
+      "date": "2025-01-31",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-09",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-09",
+      "eval": {
+        "event": "CN",
+        "onset_dt_h": null,
+        "hourly": {
+          "hits": 0,
+          "misses": 0,
+          "fa": 0,
+          "cn": 10,
+          "POD": null,
+          "FAR": null,
+          "CSI": null,
+          "MAE_VIS": 0.0
+        },
+        "T": {
+          "MAE": 1.9101835145814732,
+          "Tmin_err": -1.8171190935383947,
+          "err_0306": 1.4242903473091388
+        },
+        "mod_min_vis": 10000.0
+      },
+      "regime_log": [
+        {
+          "hour_utc": 18,
+          "regime": "radiative",
+          "reason": "Стационарна ситуация → радиационен случай, без nudging"
+        },
+        {
+          "hour_utc": 8.0,
+          "regime": "dynamic",
+          "reason": "Изгрев → nudging T"
+        }
+      ]
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-12",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-12",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-15",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-18",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-18",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-19",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-19",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-21",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-21",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-23",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-23",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-27",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-27",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-01-28",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-01-28",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-02-13",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-02-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-02-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-02-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-02-24",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-02-24",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-03-01",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-03-01",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-03-04",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-03-04",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-03-08",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-03-08",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-03-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-03-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-03-18",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-03-18",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-04-17",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-04-17",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-04-20",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-04-20",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-04-21",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-04-21",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-05-03",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-05-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-05-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-05-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-05-16",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-05-16",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-09-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-09-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-09-15",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-09-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-10-05",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-10-05",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-10-11",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-10-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-11-28",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-11-28",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-02",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-02",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-06",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-06",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-07",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-07",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-08",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-08",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-10",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-11",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-12",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-12",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-24",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-24",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2024-12-26",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2024-12-26",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-01-03",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-01-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-01-11",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-01-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-01-14",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-01-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-01-17",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-01-17",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-01-21",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-01-21",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-03",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-12",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-12",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-16",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-16",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-18",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-18",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-24",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-24",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-02-28",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-02-28",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-03-17",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-03-17",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_CLDY_2025-03-30",
+      "icao": "LBSF",
+      "category": "CLDY",
+      "date": "2025-03-30",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-01-11",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-01-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-01-13",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-01-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-01-25",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-01-25",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-01-26",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-01-26",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-02-03",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-02-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-02-27",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-02-27",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-09",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-09",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-10",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-10",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-11",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-11",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-19",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-19",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-25",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-25",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-03-27",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-03-27",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-10-01",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-10-01",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-10-03",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-10-03",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-10-12",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-10-12",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-10-17",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-10-17",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-10-19",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-10-19",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-11-04",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-11-04",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-11-05",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-11-05",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-11-21",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-11-21",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-11-26",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-11-26",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-12-15",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-12-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2024-12-16",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2024-12-16",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-01-24",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-01-24",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-02-02",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-02-02",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-02",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-02",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-08",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-08",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-13",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-13",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-14",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-14",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-15",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-15",
+      "error": "bad operand type for unary -: 'list'"
+    },
+    {
+      "case_id": "LBSF_DYNM_2025-03-24",
+      "icao": "LBSF",
+      "category": "DYNM",
+      "date": "2025-03-24",
+      "error": "bad operand type for unary -: 'list'"
+    }
+  ],
+  "regressions": []
+}

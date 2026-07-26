@@ -262,12 +262,43 @@ def run_model(icao, date_str, hour, obs_list):
             #
             # ЗАБЕЛЕЖКА (18.07.2026): унифицираният осреднен вятър тестван
             # и отхвърлен — вижте run_case.py за детайли. Върнато coastal-only.
+            #
+            # v1.4-SYNC (26.07.2026): блокът по-долу е ДОСЛОВНО копие на
+            # run_case.py, редове 848-880. До тази дата verify_cases.py
+            # съдържаше само v1.3 логиката (без поривен критерий), заради
+            # което гейтът от 26.07 отчете "бит-идентични" резултати —
+            # кръпката v1.4 просто не се е изпълнявала тук. При всяка
+            # бъдеща промяна в run_case.py тези два блока се променят
+            # ЗАЕДНО, иначе гейтът мери друг код.
             if cfg.get("coastal"):
-                _cur_wp = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
-                _cur_u = float(_cur_wp["u"][0]) if "u" in _cur_wp else 0.0
-                _cur_v = float(_cur_wp["v"][0]) if "v" in _cur_wp else 0.0
+                # ── Двоен критерий вятър+порив (v1.4) ──
+                #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
+                #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
+                #   смесено                       :  запазва текущия режим
+                # 20.0 е SENTINEL (=10.3 m/s > прага 4 m/s в diagnose_regime),
+                # а не измерена стойност — начин да се форсира DYNAMIC.
+                # Fallback към v1.3 поведение, ако поривът липсва.
+                _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
+                _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
+                _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
                 _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
-                metar_reassess = {"wind_speed": _cur_wspd_kt}
+                _gust_kt = _cur_wind.get("gust10")
+
+                metar_reassess = dict(metar_dict)
+                if _gust_kt is None:
+                    metar_reassess["wind_speed"] = _cur_wspd_kt
+                elif current_regime == "dynamic":
+                    # Излизане само ако И двете са под праг
+                    if _cur_wspd_kt < 4.0 and _gust_kt < 8.0:
+                        metar_reassess["wind_speed"] = 0.0
+                    else:
+                        metar_reassess["wind_speed"] = 20.0
+                else:
+                    # Влизане само ако И двете са над праг
+                    if _cur_wspd_kt >= 4.0 and _gust_kt >= 8.0:
+                        metar_reassess["wind_speed"] = 20.0
+                    else:
+                        metar_reassess["wind_speed"] = _cur_wspd_kt
             else:
                 # Континентални: замразеният стартов METAR (както run_case),
                 # НЕ празен {} — иначе V_sfc=0 и при стартов вятър >4 m/s
