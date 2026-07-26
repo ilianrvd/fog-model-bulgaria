@@ -475,23 +475,71 @@ def config_snapshot():
 # ──────────────────────────────────────────────────────────────────────────
 # Регресионен гейт
 # ──────────────────────────────────────────────────────────────────────────
-def load_baselines():
-    bases = {}
+_BASE_VER_RE = re.compile(r"^(LB[A-Z]{2})-v(\d+)$")
+
+
+def select_active(names):
+    """Разделя имената на бази на (активни, архивни).
+
+    Активна = базата с най-висок номер за дадено летище (LBSF-v5 бие
+    LBSF-v4). Неверсионирани имена (LBSF-pre-calib, LBSF-stage1) са
+    архивни, АКО летището има поне една версионирана база; иначе
+    остават активни, за да не остане летището без гейт.
+
+    Причина (26.07.2026): сравнението срещу всички бази раждаше ~19
+    регресии на пуск, всичките срещу надживени бази. Гейт, който вика
+    'вълк' всеки път, спира да се чете.
+    """
+    best, unversioned = {}, {}
+    for n in names:
+        m = _BASE_VER_RE.match(n)
+        if m:
+            icao, ver = m.group(1), int(m.group(2))
+            if icao not in best or ver > best[icao][1]:
+                best[icao] = (n, ver)
+        else:
+            unversioned.setdefault(n.split("-")[0], []).append(n)
+    active = {v[0] for v in best.values()}
+    for icao, lst in unversioned.items():
+        if icao not in best:
+            active.update(lst)
+    return active, set(names) - active
+
+
+def load_baselines(active_only=True):
+    """Връща (бази, имена_на_архивните)."""
+    all_bases = {}
     for p in glob.glob(os.path.join(BASELINE_DIR, "*.json")):
         with open(p, encoding="utf-8") as f:
-            bases[os.path.splitext(os.path.basename(p))[0]] = json.load(f)
-    return bases
+            all_bases[os.path.splitext(os.path.basename(p))[0]] = json.load(f)
+    if not active_only:
+        return all_bases, set()
+    active, archived = select_active(all_bases.keys())
+    return {k: v for k, v in all_bases.items() if k in active}, archived
 
 EVENT_RANK = {"HIT": 3, "CN": 3, "FA": 1, "MISS": 0}
 
-def check_regressions(results, baselines):
-    """Сравнява текущите резултати с всички приети бази."""
-    regs = []
+def check_regressions(results, baselines, strict_missing=True):
+    """Сравнява текущите резултати с приетите бази.
+
+    Връща (регресии, липсващи). Липсващ = случай, който е в базата,
+    летището му е било в пуска, но случаят не се е изпълнил — най-често
+    защото файлът е изчезнал от cases/. Старият код го подминаваше
+    мълчаливо, което вдигаше агрегатните метрики без нищо да е поправено
+    (LBWN_CDRY_2024-09-23, 26.07.2026).
+
+    strict_missing=False при --category/--date: там непълнотата е
+    очаквана и не е дефект.
+    """
+    regs, missing = [], []
     cur = {r["case_id"]: r for r in results if "error" not in r}
+    ran_icaos = {r["icao"] for r in results}
     for bname, base in baselines.items():
         for cid, b in base.get("cases", {}).items():
             r = cur.get(cid)
             if r is None:
+                if strict_missing and cid.split("_")[0] in ran_icaos:
+                    missing.append(f"{bname}: {cid}")
                 continue
             # 1) събитийно влошаване
             if EVENT_RANK[r["eval"]["event"]] < EVENT_RANK[b["event"]]:
@@ -501,7 +549,7 @@ def check_regressions(results, baselines):
             bt, rt = b.get("T_MAE"), r["eval"]["T"]["MAE"]
             if bt is not None and rt is not None and rt > bt + 0.7:
                 regs.append(f"{bname}: {cid}  MAE_T {bt:.2f} → {rt:.2f}")
-    return regs
+    return regs, sorted(set(missing))
 
 
 def save_baseline(name, results):
@@ -619,6 +667,8 @@ def main():
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--accept", metavar="ИМЕ",
                     help="Приеми текущия резултат като база (пр. LBSF-stage1)")
+    ap.add_argument("--all-baselines", action="store_true",
+                    help="Сравнявай и с архивните бази (старо поведение)")
     args = ap.parse_args()
 
     files = sorted(glob.glob(os.path.join(args.cases_dir, "LB??_*_*.txt")))
@@ -643,7 +693,7 @@ def main():
         print("Няма ситуации — провери cases/ и филтрите.")
         return
 
-    baselines = load_baselines()
+    baselines, archived = load_baselines(active_only=not args.all_baselines)
     results = []
     for i, (icao, cat, date_str, obs, path) in enumerate(cases, 1):
         cid = f"{icao}_{cat}_{date_str}"
@@ -664,7 +714,9 @@ def main():
                             "date": date_str, "error": str(e)})
 
     # Регресии срещу приетите бази
-    regs = check_regressions(results, baselines)
+    regs, missing = check_regressions(
+        results, baselines,
+        strict_missing=not (args.category or args.date))
 
     # Отчет
     print("\n" + "=" * 64)
@@ -672,21 +724,36 @@ def main():
     print(matrix_report(results))
     print("\nОЦЕНКА ПО ЕТАПИ:")
     print(stage_report(results))
+    if baselines:
+        print(f"\n[Гейт] Активни бази: {', '.join(sorted(baselines))}")
+        if archived:
+            print(f"[Гейт] Архивни (пропуснати): "
+                  f"{', '.join(sorted(archived))}")
+    if missing:
+        print("\n" + "!" * 64)
+        print("ЛИПСВАЩИ СЛУЧАИ — в базата са, но не се изпълниха:")
+        for m in missing:
+            print("  ✗ " + m)
+        print("  → провери cases/. Метриките НЕ са сравними с базата,")
+        print("    докато наборът не бъде възстановен или базата преприета.")
+        print("!" * 64)
     if regs:
         print("\n" + "!" * 64)
         print("РЕГРЕСИИ спрямо приети бази:")
         for r in regs:
             print("  ⚠ " + r)
         print("!" * 64)
-    else:
-        if baselines:
-            print("\n[Гейт] Без регресии спрямо приетите бази ✓")
+    elif baselines and not missing:
+        print("[Гейт] Без регресии спрямо активните бази ✓")
 
     # Запис
     os.makedirs(LOGS_DIR, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
     out = {"run_utc": stamp, "config": config_snapshot(),
-           "results": results, "regressions": regs}
+           "results": results, "regressions": regs,
+           "missing_cases": missing,
+           "baselines_active": sorted(baselines),
+           "baselines_archived": sorted(archived)}
     jpath = os.path.join(LOGS_DIR, f"verify_{stamp}.json")
     def _conv(o):
         if isinstance(o, np.integer):  return int(o)

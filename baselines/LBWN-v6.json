@@ -1,0 +1,286 @@
+{
+  "accepted_utc": "2026-07-26T20:20:20.140372+00:00",
+  "config": {
+    "RH_CRIT": 0.995,
+    "DZ_EFF_values": [
+      500.0,
+      50.0,
+      8.0
+    ],
+    "max_cool": "0.8 + 0.4 * np.tanh(lwp_col / 0.02)   # K/hr",
+    "fog_model_md5": "9f1d7246bb",
+    "AIRPORT_CONFIG": {
+      "LBSF": {
+        "coastal": false,
+        "N_d": 300000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBWN": {
+        "fix_soil": true,
+        "coastal": true,
+        "N_d": 50000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null,
+        "sea_sector": [
+          20,
+          160
+        ]
+      },
+      "LBBG": {
+        "coastal": true,
+        "N_d": 80000000.0,
+        "tau_T": 3600,
+        "tau_qv": 3600,
+        "sst_month": null,
+        "sea_sector": [
+          30,
+          170
+        ]
+      },
+      "LBPD": {
+        "coastal": false,
+        "N_d": 200000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      },
+      "LBGO": {
+        "coastal": false,
+        "N_d": 150000000.0,
+        "tau_T": 3600,
+        "tau_qv": 10800,
+        "sst_month": null
+      }
+    }
+  },
+  "cases": {
+    "LBWN_CDRY_2024-09-23": {
+      "event": "FA",
+      "T_MAE": 1.7006579348623703,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CDRY_2024-10-20": {
+      "event": "CN",
+      "T_MAE": 1.6947314912541493,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2024-11-05": {
+      "event": "CN",
+      "T_MAE": 2.2531534647986113,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2024-12-19": {
+      "event": "HIT",
+      "T_MAE": 2.4738831349302792,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2024-12-31": {
+      "event": "FA",
+      "T_MAE": 1.1014830073042,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CDRY_2025-01-05": {
+      "event": "CN",
+      "T_MAE": 1.36487478834297,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2025-01-08": {
+      "event": "CN",
+      "T_MAE": 1.9897598564343681,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2025-01-23": {
+      "event": "CN",
+      "T_MAE": 1.0284042949250463,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2025-02-12": {
+      "event": "FA",
+      "T_MAE": 1.5312326131082266,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CDRY_2025-02-23": {
+      "event": "CN",
+      "T_MAE": 1.9454164254382,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2025-03-08": {
+      "event": "CN",
+      "T_MAE": 2.0187009775326388,
+      "csi_hourly": null
+    },
+    "LBWN_CDRY_2025-03-20": {
+      "event": "CN",
+      "T_MAE": 1.9891629123806815,
+      "csi_hourly": null
+    },
+    "LBWN_CFOG_2024-10-02": {
+      "event": "HIT",
+      "T_MAE": 4.766428734926457,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2024-10-21": {
+      "event": "FA",
+      "T_MAE": 3.5230457635715773,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2024-10-22": {
+      "event": "HIT",
+      "T_MAE": 3.282954065156048,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2024-10-25": {
+      "event": "HIT",
+      "T_MAE": 3.0500478651349034,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2024-11-07": {
+      "event": "HIT",
+      "T_MAE": 2.177017092608125,
+      "csi_hourly": 0.16666666666666666
+    },
+    "LBWN_CFOG_2024-11-17": {
+      "event": "HIT",
+      "T_MAE": 1.3287532117730407,
+      "csi_hourly": 0.2
+    },
+    "LBWN_CFOG_2024-12-18": {
+      "event": "MISS",
+      "T_MAE": 1.046054827399498,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2025-01-20": {
+      "event": "HIT",
+      "T_MAE": 1.586013500675783,
+      "csi_hourly": 0.3333333333333333
+    },
+    "LBWN_CFOG_2025-01-30": {
+      "event": "HIT",
+      "T_MAE": 1.203332407837273,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CLDY_2024-11-14": {
+      "event": "CN",
+      "T_MAE": 0.7445683190030898,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2024-11-30": {
+      "event": "CN",
+      "T_MAE": 0.7440169483914829,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2024-12-05": {
+      "event": "CN",
+      "T_MAE": 1.3765882869984374,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2024-12-24": {
+      "event": "CN",
+      "T_MAE": 0.6201990355038021,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2024-12-28": {
+      "event": "CN",
+      "T_MAE": 0.6534186091271827,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-01-14": {
+      "event": "CN",
+      "T_MAE": 0.7614608960900817,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-02-02": {
+      "event": "CN",
+      "T_MAE": 0.9834389194525244,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-02-07": {
+      "event": "CN",
+      "T_MAE": 0.7793335294002759,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-02-15": {
+      "event": "CN",
+      "T_MAE": 0.8927218468972882,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-02-18": {
+      "event": "MISS",
+      "T_MAE": 1.0417700112071842,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-02-28": {
+      "event": "CN",
+      "T_MAE": 0.9037022458743813,
+      "csi_hourly": null
+    },
+    "LBWN_CLDY_2025-03-31": {
+      "event": "FA",
+      "T_MAE": 0.7508736317259377,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-10-06": {
+      "event": "CN",
+      "T_MAE": 1.4797203249530853,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-10-17": {
+      "event": "CN",
+      "T_MAE": 2.605535721291087,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-11-20": {
+      "event": "CN",
+      "T_MAE": 4.535062881408077,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-12-02": {
+      "event": "CN",
+      "T_MAE": 1.6610740601969525,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-12-21": {
+      "event": "CN",
+      "T_MAE": 0.6310806622042939,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2024-12-27": {
+      "event": "CN",
+      "T_MAE": 0.44913339106430783,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-01-02": {
+      "event": "CN",
+      "T_MAE": 1.5125078317997236,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-01-13": {
+      "event": "CN",
+      "T_MAE": 0.6367184879072774,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-02-06": {
+      "event": "CN",
+      "T_MAE": 2.8872315743676005,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-02-10": {
+      "event": "CN",
+      "T_MAE": 2.6218488548671353,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-03-18": {
+      "event": "CN",
+      "T_MAE": 3.2890916643227612,
+      "csi_hourly": null
+    },
+    "LBWN_DYNM_2025-03-21": {
+      "event": "FA",
+      "T_MAE": 3.6692473037523214,
+      "csi_hourly": 0.0
+    }
+  }
+}
