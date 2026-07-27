@@ -349,27 +349,17 @@ def tke_step(e: np.ndarray,
     N2 = (g / theta_v) * dtheta_v
     P_buoy = -Kh * N2
 
-    # ── B1 (27.07.2026): полу-имплицитна дисипация ──
-    # Беше: eps = Ce*e*sq_e/l ; e_new = e + dt*(P - eps + diff)
-    # Явният Ойлер е нестабилен: τ_дисип = l/(Ce·√e) ≈ 0.36 s при
-    # z=0.5m срещу dt=60 s. Схемата трептеше през стъпка между
-    # e_min=1e-5 и тавана 10, а Kh я следваше — беше шум, не сигнал.
-    #
-    # ε е линейна по e при замразено √e, затова:
-    #     e_new = (e + dt·P) / (1 + dt·Ce·√e/l)
-    # безусловно устойчиво (стандартно при Mellor-Yamada).
-    _sink = Ce * sq_e / np.maximum(l, 0.1)          # [1/s]
-    eps   = _sink * e                               # само за диагностика
+    # Дисипация ε = Ce * e^(3/2) / l
+    eps = Ce * e * sq_e / np.maximum(l, 0.1)
 
-    # Източници без дифузията — тя се прилага отделно и имплицитно
-    _P = P_shear + P_buoy
-    e_new = (e + dt * _P) / (1.0 + dt * _sink)
+    # Дифузия на TKE: ∂/∂z(K_e * ∂e/∂z)  с K_e = Km
+    de_dz  = np.gradient(e, z)
+    flux_e = Km * de_dz * rho
+    diff_e = np.gradient(flux_e, z) / rho
 
-    # ── B1: дифузия на TKE през имплицитния Thomas решател ──
-    # Беше два явни np.gradient: Km·dt/dz² ≈ 15000 при най-финия
-    # слой (dz≈0.14m, Km до 5) — също катастрофално нестабилно.
-    e_new = turbulent_diffusion(np.maximum(e_new, e_min),
-                                Km, rho, z, dt)
+    # TKE уравнение
+    de_dt = P_shear + P_buoy - eps + diff_e
+    e_new = e + dt * de_dt
     # Защита: NaN/Inf → reset към e_min
     e_new = np.where(np.isfinite(e_new), e_new, e_min)
     e_new = np.clip(e_new, e_min, 10.0)   # TKE в [e_min, 10] m²/s²
