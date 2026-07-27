@@ -742,6 +742,12 @@ def run_case(icao: str, date_str: str, hour0: int,
     # мъгла-vs-облак става в runtime по собствената приземна RH
     model.cc_series = profile.get("cc_series", [])
 
+    # v19: пориви [kt] по час — за DZ_EFF при ясна нощ.
+    # ВАЖНО: същият ред трябва да стои и във verify_cases.py, иначе
+    # гейтът мери код, който не се изпълнява (както при v1.4).
+    model.gust_series = [p.get("gust10")
+                         for p in profile.get("hourly_profiles", [])]
+
     # Инициализираме почвените температури от ICON
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
