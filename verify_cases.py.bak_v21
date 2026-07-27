@@ -286,21 +286,18 @@ def run_model(icao, date_str, hour, obs_list):
                 _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
                 _gust_kt = _cur_wind.get("gust10")
 
-                # v21: прагове по летище — ДОСЛОВНО като run_case.py
-                _v_thr, _g_thr = cfg.get("gust_thresholds", (4.0, 8.0))
-
                 metar_reassess = dict(metar_dict)
                 if _gust_kt is None:
                     metar_reassess["wind_speed"] = _cur_wspd_kt
                 elif current_regime == "dynamic":
                     # Излизане само ако И двете са под праг
-                    if _cur_wspd_kt < _v_thr and _gust_kt < _g_thr:
+                    if _cur_wspd_kt < 4.0 and _gust_kt < 8.0:
                         metar_reassess["wind_speed"] = 0.0
                     else:
                         metar_reassess["wind_speed"] = 20.0
                 else:
                     # Влизане само ако И двете са над праг
-                    if _cur_wspd_kt >= _v_thr and _gust_kt >= _g_thr:
+                    if _cur_wspd_kt >= 4.0 and _gust_kt >= 8.0:
                         metar_reassess["wind_speed"] = 20.0
                     else:
                         metar_reassess["wind_speed"] = _cur_wspd_kt

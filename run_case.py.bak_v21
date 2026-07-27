@@ -45,21 +45,7 @@ AIRPORT_CONFIG = {
     "LBSF": {"coastal": False, "N_d": 300e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
     "LBWN": {"fix_soil": True, "coastal": True,  "gust_regime": True, "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (20, 160)},
     "LBBG": {"coastal": True,  "gust_regime": True, "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (30, 170)},
-    # gust_thresholds (V_kt, Gust_kt) — по подразбиране (4.0, 8.0).
-    # Механизмът е наличен и тестван; засега никое летище не го
-    # предефинира.
-    #
-    # LBPD БЕЗ gust_regime (v22, 27.07.2026). Опитано и отхвърлено:
-    #   v20 (праг 8):  CSI 0.316 → 0.316, MAE_T 2.53 → 2.60, 2 регресии
-    #   v21 (праг 12): нула променени случая — критерият действа в две
-    #     посоки и вдигането на прага прави ИЗЛИЗАНЕТО по-лесно, а
-    #     щетата идваше оттам (2024-11-04, 20 UTC: V=1.0 kt, G=3.7 kt
-    #     са под всеки праг → форсира RADIATIVE → MAE_T 1.82 → 4.51)
-    #
-    # Причината да се махне не са регресиите, а че цели грешната
-    # популация. Разбор на 11-те FA по наблюдавана облачност:
-    #   6 облачни нощи · 5 ясни (всичките CDRY) · 1-2 вятърни
-    "LBPD": {"coastal": False, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
+    "LBPD": {"coastal": False, "gust_regime": True, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
     "LBGO": {"coastal": False, "gust_regime": True, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
 }
 
@@ -896,22 +882,18 @@ def run_case(icao: str, date_str: str, hour0: int,
                 _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
                 _gust_kt = _cur_wind.get("gust10")
 
-                # v21: прагове по летище. Подразбиране (4, 8);
-                # LBPD е на (4, 12) — виж коментара в AIRPORT_CONFIG.
-                _v_thr, _g_thr = cfg.get("gust_thresholds", (4.0, 8.0))
-
                 metar_reassess = dict(metar_dict)
                 if _gust_kt is None:
                     metar_reassess["wind_speed"] = _cur_wspd_kt
                 elif current_regime == "dynamic":
                     # Излизане само ако И двете са под праг
-                    if _cur_wspd_kt < _v_thr and _gust_kt < _g_thr:
+                    if _cur_wspd_kt < 4.0 and _gust_kt < 8.0:
                         metar_reassess["wind_speed"] = 0.0
                     else:
                         metar_reassess["wind_speed"] = 20.0
                 else:
                     # Влизане само ако И двете са над праг
-                    if _cur_wspd_kt >= _v_thr and _gust_kt >= _g_thr:
+                    if _cur_wspd_kt >= 4.0 and _gust_kt >= 8.0:
                         metar_reassess["wind_speed"] = 20.0
                     else:
                         metar_reassess["wind_speed"] = _cur_wspd_kt
