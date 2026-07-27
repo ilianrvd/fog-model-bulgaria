@@ -524,7 +524,7 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
         fog_mask  = ql > 1e-5
         absorpt   = np.where(fog_mask, 1.0 - ALBEDO_FOG, ALPHA_AIR)
         # В мъглата: поглъщане от дивергенцията на flux-а
-        _sw_fog = np.gradient(SW_dn, z) * absorpt / (rho * cp)
+        _sw_fog = -np.gradient(SW_dn, z) * absorpt / (rho * cp)
         dQ_dt += _sw_fog
         LAST_RAD_TERMS["sw_fog"] = float(_sw_fog[0])
         # При ясно небе: фонов SW член (водна пара поглъща в целия PBL)
