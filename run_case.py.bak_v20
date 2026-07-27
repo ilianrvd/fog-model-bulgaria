@@ -26,27 +26,12 @@ from icon_reader   import AIRPORT_COORDS, PRESSURE_LEVELS, eps_r
 from metar_parser  import parse_metar, apply_metar_correction
 from output        import save_surface_csv, plot_forecast, print_summary_report
 
-# gust_regime (v20, 27.07.2026) — кои летища ползват двойния критерий
-# вятър+порив при ПОЧАСОВАТА преоценка на режима. Отделен флаг от
-# coastal, защото coastal управлява и ADVECTIVE режима, и sea_sector.
-#
-# Сух пробег 27.07 (dryrun_gust_regime.py, 264 случая) — дял на
-# случаите, засегнати от критерия:
-#     LBGO  HIT 0.0 %  FA 14.0 %   → включено
-#     LBPD  HIT 0.0 %  FA 10.2 %   → включено
-#     LBSF  HIT 10.9 % FA  9.0 %   → ИЗКЛЮЧЕНО
-#
-# София: решетъчен скан V∈[4..8]kt × Gust∈[8..16]kt показва, че
-# LBSF_CLDY_2024-01-19 (реална мъгла, уловена от модела) е засегнат
-# във ВСИЧКИТЕ 25 клетки. Праг, който пази HIT и хваща FA, не
-# съществува — ICON вятърът в котловината описва слоя НАД инверсията,
-# не приземния. Нужен е друг предиктор, не по-висок праг.
 AIRPORT_CONFIG = {
     "LBSF": {"coastal": False, "N_d": 300e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBWN": {"fix_soil": True, "coastal": True,  "gust_regime": True, "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (20, 160)},
-    "LBBG": {"coastal": True,  "gust_regime": True, "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (30, 170)},
-    "LBPD": {"coastal": False, "gust_regime": True, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBGO": {"coastal": False, "gust_regime": True, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
+    "LBWN": {"fix_soil": True, "coastal": True,  "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (20, 160)},
+    "LBBG": {"coastal": True,  "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (30, 170)},
+    "LBPD": {"coastal": False, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
+    "LBGO": {"coastal": False, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
 }
 
 # SST климатология за Черно море при Варна/Бургас [°C] по месец (1=яну ... 12=дек)
@@ -860,13 +845,7 @@ def run_case(icao: str, date_str: str, hour0: int,
             # без ефект; София: нетна загуба (CLDY регресии се върнаха).
             # Върнато към coastal-only. Decoupling-осъзнат подход е
             # следващият кандидат, не уеднаквено вятърно правило.
-            #
-            # v20 (27.07.2026): условието вече е по флага gust_regime,
-            # не по coastal. Добавени LBGO и LBPD — сухият пробег дава
-            # 0 % засегнати HIT при тях. София остава вън: скан на
-            # прагове показа, че разделяща двойка не съществува.
-            # ВАЖНО: същото условие стои и във verify_cases.py.
-            if cfg.get("gust_regime"):
+            if cfg.get("coastal"):
                 # ── ЕКСПЕРИМЕНТ 26.07.2026: двоен критерий вятър+порив ──
                 # Само LBWN/LBBG, само reassessment. Праговете НЕ се
                 # променят по стойност, а по величина:

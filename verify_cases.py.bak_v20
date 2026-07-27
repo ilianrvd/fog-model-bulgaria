@@ -270,9 +270,7 @@ def run_model(icao, date_str, hour, obs_list):
             # кръпката v1.4 просто не се е изпълнявала тук. При всяка
             # бъдеща промяна в run_case.py тези два блока се променят
             # ЗАЕДНО, иначе гейтът мери друг код.
-            # v20 (27.07.2026): по флага gust_regime, не по coastal.
-            # ДОСЛОВНО като run_case.py.
-            if cfg.get("gust_regime"):
+            if cfg.get("coastal"):
                 # ── Двоен критерий вятър+порив (v1.4) ──
                 #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
                 #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
