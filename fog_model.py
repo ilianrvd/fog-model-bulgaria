@@ -206,12 +206,6 @@ D_SOIL_G = 0.05      # m
 U_MIN    = 0.3       # m/s
 C_SOIL_LAYER = 1.2e6 * 0.10   # J/m²/K — Force-Restore T_soil
 
-# ── v19: дебелина на охлаждания слой при ясна нощ ──
-# DZ = DZ_CLEAR_BASE · (max(G, DZ_GUST_REF)/DZ_GUST_REF)²,  G = порив [kt]
-DZ_CLEAR_BASE = 8.0      # m   — при тихо; запазва старото поведение
-DZ_GUST_REF   = 4.0      # kt  — под този праг няма ефект
-DZ_CLEAR_MAX  = 200.0    # m   — таван
-
 # Диагностика на SEB бюджета. Логва член по член нощем.
 # Включи с fog_model.SEB_DEBUG = True, или SEB_DEBUG=1 в средата.
 import os as _os
@@ -917,25 +911,8 @@ class FogModel1D:
         else:                          # ясна нощ
             # Плитък decoupled слой: реално изстиват първите метри,
             # не 20m. С H~1.4 W/m²: 20m → 0.2 K/hr; 8m → ~0.5 K/hr,
-            # близо до наблюдаваните 0.8–1 K/hr в ТИХИ ясни нощи.
-            #
-            # v19 (27.07.2026): при вятър слоят е много по-дебел.
-            # LBGO 2024-10-03, пориви 8–10 kt: DZ=8 даваше −2.5 K/hr
-            # срещу реални −0.3, и нощта свършваше с фалшива мъгла.
-            #
-            # DZ = 8 · (max(G,4)/4)²  — квадратично, защото дълбочината
-            # на механично смесения устойчив слой расте ~ u*².
-            # ЗАОБИКАЛЯНЕ, НЕ ФИЗИКА: правилният източник е Kh, но TKE
-            # схемата осцилира между e_min и тавана през стъпка и Kh е
-            # шум. Да се замени с DZ(Kh) след стабилизиране на TKE.
+            # близо до наблюдаваните 0.8–1 K/hr в тихи ясни нощи.
             DZ_EFF_SEB = 8.0
-            _g = getattr(self, "gust_series", None)
-            if _g:
-                _gi = min(int(self.time // 3600.0), len(_g) - 1)
-                _gk = _g[_gi]
-                if _gk is not None and np.isfinite(_gk):
-                    _r = max(float(_gk), DZ_GUST_REF) / DZ_GUST_REF
-                    DZ_EFF_SEB = min(DZ_CLEAR_BASE * _r * _r, DZ_CLEAR_MAX)
         _d_seb = H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
         T_new[0] += _d_seb
 

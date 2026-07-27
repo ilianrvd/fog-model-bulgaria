@@ -212,10 +212,6 @@ def run_model(icao, date_str, hour, obs_list):
                        hour0=float(hour), dt=60, day_of_year=doy)
     model.cc_series = profile.get("cc_series", [])
 
-    # v19: пориви [kt] по час — ДОСЛОВНО като run_case.py.
-    model.gust_series = [p.get("gust10")
-                         for p in profile.get("hourly_profiles", [])]
-
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
         model.T_soil = float(T_soil_icon)
