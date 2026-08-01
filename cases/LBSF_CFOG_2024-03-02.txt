@@ -3,13 +3,14 @@
 КАТЕГОРИЯ : CFOG
 НОЩ       : 2024-03-02 / 2024-03-03 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 36
-Среден вятър           : 1.6 kt
+Общо METAR-и в нощта  : 34
+Среден вятър           : 1.5 kt
 Максимален вятър       : 4.0 kt
 Мин. T−Td спред        : 0.0 °C
 Мин. видимост          : 400 m
-METAR-и с мъгла        : 14
-Прибл. часове мъгла    : 7.0 ч
+METAR-и с мъгла        : 9
+METAR-и с явление      : 11
+Прибл. часове мъгла    : 5.5 ч
 Ясни METAR-и преди мъгла: 83%
 Значим валеж           : не
 ================================================================
@@ -45,8 +46,6 @@ METAR LBSF 030500Z 00000KT 0500 R27/P2000N BCFG OVC005 04/03 Q1014 TEMPO 0300 FG
 METAR LBSF 030530Z 00000KT 0550 R27/P2000N FG SCT005 OVC008 04/04 Q1014 TEMPO 0300 FG
 METAR LBSF 030600Z VRB02KT 0550 R27/P2000N BCFG SCT005 OVC008 04/04 Q1014 TEMPO 0300 FG
 METAR LBSF 030630Z NIL
-METAR RRA METAR LBSF 030630Z VRB02KT 0800 R27/P2000N FG FEW002 SCT004 OVC008 05/04 Q1014 TEMPO 0500 BCFG
-METAR RRA METAR LBSF 030700Z 31003KT 280V340 0650 R27/0800N FG OVC002 05/04 Q1014 TEMPO 0400 BCFG
 METAR LBSF 030700Z NIL
 METAR LBSF 030730Z VRB02KT 0650 R27/0900D FG OVC002 05/04 Q1014 TEMPO 0400 BCFG
 METAR LBSF 030800Z VRB02KT 3300 BR BKN002 BKN004 OVC009 05/05 Q1014 TEMPO 0500 BCFG BKN003

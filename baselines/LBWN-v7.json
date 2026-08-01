@@ -122,11 +122,6 @@
       "T_MAE": 4.736613148742467,
       "csi_hourly": 0.0
     },
-    "LBWN_CFOG_2024-10-21": {
-      "event": "FA",
-      "T_MAE": 3.4123451816217276,
-      "csi_hourly": 0.0
-    },
     "LBWN_CFOG_2024-10-22": {
       "event": "HIT",
       "T_MAE": 3.197749609579514,
@@ -217,11 +212,6 @@
       "T_MAE": 0.9037022414688103,
       "csi_hourly": null
     },
-    "LBWN_CLDY_2025-03-31": {
-      "event": "FA",
-      "T_MAE": 0.7511415492715189,
-      "csi_hourly": null
-    },
     "LBWN_DYNM_2024-10-06": {
       "event": "CN",
       "T_MAE": 1.4797203249530853,
@@ -281,6 +271,16 @@
       "event": "FA",
       "T_MAE": 3.599396733596194,
       "csi_hourly": 0.0
+    },
+    "LBWN_CDRY_2024-10-21": {
+      "event": "FA",
+      "T_MAE": 3.4123451816217276,
+      "csi_hourly": 0.0
+    },
+    "LBWN_CFOG_2025-03-31": {
+      "event": "FA",
+      "T_MAE": 0.7511415492715189,
+      "csi_hourly": null
     }
   }
 }

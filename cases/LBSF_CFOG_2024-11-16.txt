@@ -3,14 +3,15 @@
 КАТЕГОРИЯ : CFOG
 НОЩ       : 2024-11-16 / 2024-11-17 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 35
+Общо METAR-и в нощта  : 34
 Среден вятър           : 1.9 kt
 Максимален вятър       : 5.0 kt
 Мин. T−Td спред        : 0.0 °C
 Мин. видимост          : 200 m
-METAR-и с мъгла        : 9
-Прибл. часове мъгла    : 4.5 ч
-Ясни METAR-и преди мъгла: 80%
+METAR-и с мъгла        : 8
+METAR-и с явление      : 11
+Прибл. часове мъгла    : 5.5 ч
+Ясни METAR-и преди мъгла: 70%
 Значим валеж           : не
 ================================================================
 СУРОВИ METAR-И:
@@ -40,7 +41,6 @@ METAR LBSF 170230Z AUTO VRB01KT 8000 3700W SCT006/// SCT008/// M03/M04 Q1019 TEM
 METAR LBSF 170300Z AUTO 00000KT 7000 0800W R09/0900D FZFG SCT004/// M04/M04 Q1019 TEMPO 0600 FZFG
 METAR LBSF 170330Z AUTO VRB02KT 7000 1900W FEW004/// SCT006/// M05/M06 Q1019 TEMPO 0300 FZFG SCT002
 METAR LBSF 170400Z AUTO VRB02KT 6000 0250E FZFG VV001 M05/M05 Q1018 TEMPO 0300 FZFG SCT002
-METAR RRA METAR LBSF 170430Z 00000KT 0500 0300E R09/1000D FZFG VV001 M05/M06 Q1018 NOSIG
 METAR LBSF 170430Z NIL
 METAR LBSF 170500Z 00000KT 0400 R09/0500N FZFG VV001 M05/M06 Q1018 NOSIG
 METAR LBSF 170530Z 00000KT 0300 R09/0375N FZFG VV001 M05/M06 Q1018 NOSIG

@@ -3,7 +3,7 @@
 КАТЕГОРИЯ : CDRY
 НОЩ       : 2024-10-16 / 2024-10-17 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 35
+Общо METAR-и в нощта  : 34
 Среден вятър           : 3.0 kt
 Максимален вятър       : 6.0 kt
 Мин. T−Td спред        : 0.0 °C
@@ -46,5 +46,4 @@ METAR LBSF 170630Z 07003KT 9999 FEW007 07/05 Q1029 NOSIG
 METAR LBSF 170700Z 07003KT CAVOK 08/05 Q1029 NOSIG
 METAR LBSF 170730Z 10004KT 060V140 CAVOK 09/06 Q1029 NOSIG
 METAR LBSF 170800Z NIL
-METAR RRA METAR LBSF 170800Z 13004KT CAVOK 11/06 Q1029 NOSIG
 METAR LBSF 170830Z 12003KT 080V170 CAVOK 12/06 Q1029 NOSIG

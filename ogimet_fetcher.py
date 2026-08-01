@@ -28,6 +28,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 from metar_parser import parse_metar
+import pairing
 
 
 # ──────────────────────────────────────────────────────────────
@@ -252,6 +253,13 @@ def obs_to_metar_dict(obs: dict) -> dict:
 # Верификация (идентична с iem_fetcher)
 # ──────────────────────────────────────────────────────────────
 
+def _span_h(history):
+    """Реален хоризонт в часове — броят записи вече не е брой часове."""
+    if not history:
+        return 0.0
+    return float(history[-1].get("time_h", 0)) - float(history[0].get("time_h", 0))
+
+
 def verify_forecast(history: list, icao: str,
                     date_str: str, hour0: int,
                     all_obs: dict) -> dict:
@@ -265,7 +273,8 @@ def verify_forecast(history: list, icao: str,
     obs_list = all_obs.get(icao, [])
 
     print(f"\n{'═'*68}")
-    print(f"  ВЕРИФИКАЦИЯ — {icao}  {date_str} {hour0:02d}UTC → +{len(history)-1}h")
+    print(f"  ВЕРИФИКАЦИЯ — {icao}  {date_str} {hour0:02d}UTC → "
+          f"+{_span_h(history):.0f}h")
     print(f"{'═'*68}")
     print(f"  {'UTC':>5} | {'VIS_mod':>8} | {'CAT_mod':>7} | "
           f"{'T_mod':>6} | {'VIS_obs':>8} | {'CAT_obs':>7} | {'T_obs':>6} | Резултат")
@@ -274,37 +283,32 @@ def verify_forecast(history: list, icao: str,
     hits = misses = false_alarms = correct_neg = 0
     vis_errors = []
 
-    base_dt = datetime.strptime(date_str, "%Y-%m-%d")
+    from datetime import timezone as _tz
+    base_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=_tz.utc)
 
-    for r in history:
-        vis_mod = r["vis_sfc"]
-        cat_mod = r["cat"]
-        T_mod   = r["T_sfc"] - 273.15
-
-        # Намираме наблюдението за този час
-        obs_dt   = base_dt + timedelta(hours=hour0 + r["time_h"])
-        obs_date = obs_dt.strftime("%Y-%m-%d")
-        obs_h    = obs_dt.hour
-
-        best_obs  = None
-        best_diff = 35   # ±35 мин прозорец
-        for obs in obs_list:
-            t = obs["time"]
-            m = re.search(r'T(\d{2}):(\d{2})', t)
-            if not m or obs_date not in t:
-                continue
-            oh, omn = int(m[1]), int(m[2])
-            diff = abs(oh * 60 + omn - obs_h * 60)
-            if diff < best_diff:
-                best_diff = diff
-                best_obs  = obs
-
-        if best_obs is None:
-            print(f"  {r['hour_utc']:5.1f} | {vis_mod:8.0f} | {cat_mod:>7} | "
-                  f"{T_mod:6.1f} | {'—':>8} | {'—':>7} | {'—':>6} | няма obs")
+    # Сдвояване по НАБЛЮДЕНИЯ през общия модул — виж iem_fetcher.
+    mod_times = [base_dt + timedelta(hours=hour0 + r["time_h"]) for r in history]
+    obs_times, obs_keep = [], []
+    for obs in obs_list:
+        try:
+            ot = datetime.strptime(obs["time"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=_tz.utc)
+        except (ValueError, KeyError):
             continue
+        obs_times.append(ot)
+        obs_keep.append(obs)
 
-        vis_obs = best_obs.get("vis_m") or 10000
+    for i_obs, i_mod, _dt in pairing.pair_obs_to_model(obs_times, mod_times):
+        r        = history[i_mod]
+        best_obs = obs_keep[i_obs]
+        vis_mod  = r["vis_sfc"]
+        cat_mod  = r["cat"]
+        T_mod    = r["T_sfc"] - 273.15
+
+        # ВНИМАНИЕ: `or 10000` тук беше бъг — VIS = 0 се четеше като ясно.
+        vis_obs = best_obs.get("vis_m")
+        if vis_obs is None:
+            vis_obs = 10000
         T_obs   = best_obs.get("T")
         T_obs_s = f"{T_obs:.1f}" if T_obs is not None else "—"
 

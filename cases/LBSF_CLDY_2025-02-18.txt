@@ -3,14 +3,14 @@
 КАТЕГОРИЯ : CLDY
 НОЩ       : 2025-02-18 / 2025-02-19 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 35
-Среден вятър           : 6.7 kt
+Общо METAR-и в нощта  : 34
+Среден вятър           : 6.8 kt
 Максимален вятър       : 12.0 kt
 Мин. T−Td спред        : 1.0 °C
 Мин. видимост          : 1200 m
-Дял BKN/OVC            : 77%
-Валеж                  : да
-VIS < 2000 m           : да
+Ясни METAR-и (нощта)   : 24%
+METAR-и с ниска BKN/OVC: 26
+METAR-и с VIS < 2000 m : да
 ================================================================
 СУРОВИ METAR-И:
 ----------------------------------------------------------------
@@ -43,7 +43,6 @@ METAR LBSF 190430Z 30004KT 9999 SCT037 BKN062 M06/M09 Q1027 NOSIG
 METAR LBSF 190500Z 04003KT 350V070 9999 SCT044 BKN068 M06/M09 Q1027 NOSIG
 METAR LBSF 190530Z 36003KT 290V030 9999 SCT045 OVC058 M07/M09 Q1027 NOSIG
 METAR LBSF 190600Z VRB02KT 9999 FEW033 SCT050 OVC067 M07/M09 Q1028 NOSIG
-METAR CCA METAR COR LBSF 190630Z 32003KT 290V350 1200 R27/1300D -SN BR SCT012 BKN025 OVC031 M06/M08 Q1028 TEMPO 0800 SN
 METAR LBSF 190630Z 32003KT 290V350 1200 RMID/P2000N -SN BR SCT012 BKN025 OVC031 M06/M08 Q1028 TEMPO 0800 SN
 METAR LBSF 190700Z 30005KT 3200 -SN FEW017 BKN029 OVC068 M06/M07 Q1028 TEMPO 1500 SN
 METAR LBSF 190730Z 33004KT 8000 -SN FEW004 BKN070 M05/M07 Q1028 NOSIG

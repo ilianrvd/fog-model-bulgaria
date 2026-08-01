@@ -75,11 +75,6 @@
       "T_MAE": 4.693646299001674,
       "csi_hourly": null
     },
-    "LBGO_CDRY_2024-11-18": {
-      "event": "MISS",
-      "T_MAE": 2.0911088397020734,
-      "csi_hourly": 0.0
-    },
     "LBGO_CDRY_2024-12-13": {
       "event": "FA",
       "T_MAE": 2.2673983928838446,
@@ -93,11 +88,6 @@
     "LBGO_CDRY_2025-01-04": {
       "event": "CN",
       "T_MAE": 1.1143466168477332,
-      "csi_hourly": null
-    },
-    "LBGO_CDRY_2025-01-25": {
-      "event": "CN",
-      "T_MAE": 3.003100459357416,
       "csi_hourly": null
     },
     "LBGO_CDRY_2025-02-14": {
@@ -283,6 +273,16 @@
     "LBGO_DYNM_2025-03-15": {
       "event": "CN",
       "T_MAE": 2.8002743715934635,
+      "csi_hourly": null
+    },
+    "LBGO_CFOG_2024-11-18": {
+      "event": "MISS",
+      "T_MAE": 2.0911088397020734,
+      "csi_hourly": 0.0
+    },
+    "LBGO_CFOG_2025-01-25": {
+      "event": "CN",
+      "T_MAE": 3.003100459357416,
       "csi_hourly": null
     }
   }

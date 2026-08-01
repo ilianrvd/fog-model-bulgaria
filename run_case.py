@@ -23,12 +23,14 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 from fog_model     import FogModel1D
 from icon_reader   import AIRPORT_COORDS, PRESSURE_LEVELS, eps_r
+import fog_model    # за set_solar_site — слънчева геометрия по дължина
 from metar_parser  import parse_metar, apply_metar_correction
 from output        import save_surface_csv, plot_forecast, print_summary_report
+import pairing
 
 # gust_regime (v20, 27.07.2026) — кои летища ползват двойния критерий
 # вятър+порив при ПОЧАСОВАТА преоценка на режима. Отделен флаг от
-# coastal, защото coastal управлява и ADVECTIVE режима, и sea_sector.
+# coastal, защото coastal управлява ADVECTIVE режима.
 #
 # Сух пробег 27.07 (dryrun_gust_regime.py, 264 случая) — дял на
 # случаите, засегнати от критерия:
@@ -42,9 +44,9 @@ from output        import save_surface_csv, plot_forecast, print_summary_report
 # съществува — ICON вятърът в котловината описва слоя НАД инверсията,
 # не приземния. Нужен е друг предиктор, не по-висок праг.
 AIRPORT_CONFIG = {
-    "LBSF": {"coastal": False, "N_d": 300e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBWN": {"fix_soil": True, "coastal": True,  "gust_regime": True, "N_d":  50e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (20, 160)},
-    "LBBG": {"coastal": True,  "gust_regime": True, "N_d":  80e6, "tau_T": 3600,  "tau_qv": 3600,  "sst_month": None, "sea_sector": (30, 170)},
+    "LBSF": {"coastal": False, "tau_T": 3600,  "tau_qv": 10800},
+    "LBWN": {"fix_soil": True, "coastal": True,  "gust_regime": True, "tau_T": 3600,  "tau_qv": 3600},
+    "LBBG": {"coastal": True,  "gust_regime": True, "tau_T": 3600,  "tau_qv": 3600},
     # gust_thresholds (V_kt, Gust_kt) — по подразбиране (4.0, 8.0).
     # Механизмът е наличен и тестван; засега никое летище не го
     # предефинира.
@@ -59,17 +61,19 @@ AIRPORT_CONFIG = {
     # Причината да се махне не са регресиите, а че цели грешната
     # популация. Разбор на 11-те FA по наблюдавана облачност:
     #   6 облачни нощи · 5 ясни (всичките CDRY) · 1-2 вятърни
-    "LBPD": {"coastal": False, "N_d": 200e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
-    "LBGO": {"coastal": False, "gust_regime": True, "N_d": 150e6, "tau_T": 3600,  "tau_qv": 10800, "sst_month": None},
+    "LBPD": {"coastal": False, "tau_T": 3600,  "tau_qv": 10800},
+    "LBGO": {"coastal": False, "gust_regime": True, "tau_T": 3600,  "tau_qv": 10800},
 }
 
-# SST климатология за Черно море при Варна/Бургас [°C] по месец (1=яну ... 12=дек)
-BLACK_SEA_SST = {1:7, 2:7, 3:8, 4:11, 5:16, 6:21, 7:24, 8:25, 9:22, 10:18, 11:13, 12:9}
-
-def get_sst(date_str: str) -> float:
-    """Връща SST [°C] по месец от климатологията."""
-    month = int(date_str[5:7])
-    return float(BLACK_SEA_SST[month])
+# МАХНАТО 30.07.2026 — мъртва конфигурация.
+# BLACK_SEA_SST / get_sst() бяха дефинирани и НИКОГА не се викаха; същото
+# за "sst_month", "N_d" и "sea_sector" в AIRPORT_CONFIG. Записваха се в
+# config снимката на всеки базелайн и създаваха впечатление за активни
+# настройки, каквито не бяха. N_d в модела е модулна константа 100e6 и се
+# ползва само за ефективния радиус при отсядането; lwc_to_visibility не
+# зависи от нея изобщо (чист Kunkel).
+# Ако SST потрябва при работата по крайбрежните нощи — връща се съзнателно,
+# заедно с кода, който я чете.
 
 # ──────────────────────────────────────────────────────────────
 # Historical Forecast API
@@ -764,6 +768,12 @@ def run_case(icao: str, date_str: str, hour0: int,
     u_m  = np.interp(z_model, profile["z"], profile["u"])
     v_m  = np.interp(z_model, profile["z"], profile["v"])
 
+    # Слънчевата геометрия зависи от географската ДЪЛЖИНА (поправка
+    # 31.07.2026). Задава се преди пробега — модулните функции в
+    # fog_model я четат оттам.
+    _c = AIRPORT_COORDS[icao]
+    fog_model.set_solar_site(_c["lat"], _c["lon"])
+
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour0), dt=dt, day_of_year=doy)
 
@@ -813,6 +823,7 @@ def run_case(icao: str, date_str: str, hour0: int,
     # 6. Интеграция
     steps_total  = int(hours * 3600 / dt)
     steps_per_hr = int(3600 / dt)
+    steps_out    = int(pairing.OUTPUT_INTERVAL_MIN * 60 / dt)
     hourly_profs = profile.get("hourly_profiles", [])
 
     model.diagnose()
@@ -969,9 +980,13 @@ def run_case(icao: str, date_str: str, hour0: int,
             apply_nudging(model, hourly_profs[prof_idx],
                           cfg["tau_T"], current_tau)
 
-        # Изход на всеки час
-        if step % steps_per_hr == 0:
+        # Снимка на състоянието — на всеки OUTPUT_INTERVAL_MIN минути
+        if step % steps_out == 0:
             r = model.diagnose()
+
+        # Операторската таблица остава ЧАСОВА — иначе се удвоява без полза
+        if step % steps_per_hr == 0:
+            r = model.history[-1]
             # ICON вятър и cf за текущия час
             # V_ICON е на най-ниското ICON барично ниво (~30-100m AGL)
             _pi = hourly_profs[min(prof_idx, len(hourly_profs)-1)] if hourly_profs else {}
@@ -1123,13 +1138,28 @@ def main():
         name    = AIRPORT_COORDS[icao]["name"]
         min_vis = min(r["vis_sfc"] for r in history)
         min_t   = next(r["hour_utc"] for r in history if r["vis_sfc"] == min_vis)
-        fog_h   = sum(1 for r in history if r["vis_sfc"] < 1000)
+        # Броят записи вече не е брой часове — history е на
+        # OUTPUT_INTERVAL_MIN минути, не на час.
+        fog_h   = (sum(1 for r in history if r["vis_sfc"] < 1000)
+                   * pairing.OUTPUT_INTERVAL_MIN / 60.0)
         if   min_vis < 200:  rating = "LIFR  ⛔ Силна мъгла"
         elif min_vis < 600:  rating = "IFR   ⚠ Мъгла"
         elif min_vis < 1000: rating = "MVFR  ~ Намалена VIS"
         else:                rating = "VFR   ✓ Ясно"
         print(f"  {icao:<6} {name:<16} {min_vis:>7.0f}m "
-              f"{min_t:>5.0f} {fog_h:>4}h   {rating}")
+              f"{min_t:>5.1f} {fog_h:>4.1f}h  {rating}")
+
+        # Надеждност — не мени прогнозата, казва колко да ѝ се вярва.
+        # Измерено на набора; величината rh_early_max е диагностика на
+        # модела, тоест е налична и оперативно, веднага след 22 UTC.
+        try:
+            import reliability
+            if reliability.load() is not None:
+                rh_e = reliability.rh_early_max_from_history(history)
+                a = reliability.assess(icao, min_vis < 1000, rh_e)
+                print(f"         {a['line']}")
+        except Exception as _e:
+            print(f"         [НАДЕЖДНОСТ] недостъпна: {_e}")
 
     print(f"{'═'*68}")
     print(f"\n  Timeline  (█LIFR  ▓IFR  ░MVFR  ·VFR)")

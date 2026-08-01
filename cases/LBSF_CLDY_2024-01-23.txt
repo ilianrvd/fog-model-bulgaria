@@ -3,14 +3,14 @@
 КАТЕГОРИЯ : CLDY
 НОЩ       : 2024-01-23 / 2024-01-24 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 36
+Общо METAR-и в нощта  : 34
 Среден вятър           : 4.7 kt
 Максимален вятър       : 10.0 kt
 Мин. T−Td спред        : 0.0 °C
 Мин. видимост          : 800 m
-Дял BKN/OVC            : 69%
-Валеж                  : не
-VIS < 2000 m           : да
+Ясни METAR-и (нощта)   : 47%
+METAR-и с ниска BKN/OVC: 18
+METAR-и с VIS < 2000 m : да
 ================================================================
 СУРОВИ METAR-И:
 ----------------------------------------------------------------
@@ -41,9 +41,7 @@ METAR LBSF 240330Z AUTO 26007KT 9999 FEW049/// M01/M03 Q1028 TEMPO BKN012
 METAR LBSF 240400Z AUTO 27007KT 9999 SCT048/// M02/M03 Q1028 TEMPO BKN012
 METAR LBSF 240430Z 33003KT 6000 SCT045 M02/M04 Q1028 TEMPO 5000 BR
 METAR LBSF 240500Z 31003KT 0800 R27/0900U FZFG BKN046 M04/M05 Q1028 TEMPO 0600 FZFG
-METAR RRA METAR LBSF 240530Z 28004KT 7000 BR OVC044 M03/M03 Q1029 TEMPO 0800 FZFG
 METAR LBSF 240530Z NIL
-METAR RRA METAR LBSF 240600Z 25006KT 9999 BKN041 M01/M03 Q1029 TEMPO 0800 FZFG
 METAR LBSF 240600Z NIL
 METAR LBSF 240630Z 26007KT 9999 BKN041 M02/M04 Q1029 TEMPO 3000 BR
 METAR LBSF 240700Z 29004KT 7000 SCT042 M02/M04 Q1028 TEMPO 4000 BR

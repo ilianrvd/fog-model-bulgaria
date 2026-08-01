@@ -3,11 +3,11 @@
 КАТЕГОРИЯ : CDRY
 НОЩ       : 2025-02-11 / 2025-02-12 (UTC 16:00–09:00)
 ----------------------------------------------------------------
-Общо METAR-и в нощта  : 35
+Общо METAR-и в нощта  : 34
 Среден вятър           : 2.3 kt
 Максимален вятър       : 6.0 kt
 Мин. T−Td спред        : 1.0 °C
-Мин. видимост          : 9999 m
+Мин. видимост          : 8000 m
 Ясни METAR-и (нощта)   : 100%
 METAR-и с VIS < 2000 m : не
 ================================================================
@@ -41,7 +41,6 @@ METAR LBSF 120400Z AUTO 35002KT 9999 NCD M11/M12 Q1030 NOSIG
 METAR LBSF 120430Z 35002KT CAVOK M11/M13 Q1030 NOSIG
 METAR LBSF 120500Z 35002KT CAVOK M11/M13 Q1030 NOSIG
 METAR LBSF 120530Z NIL
-METAR RRA METAR LBSF 120530Z 01002KT CAVOK M11/M13 Q1030 TEMPO 4000 BR
 METAR LBSF 120600Z 00000KT 8000 NSC M11/M13 Q1030 TEMPO 5000 BR
 METAR LBSF 120630Z 00000KT 8000 NSC M08/M11 Q1030 TEMPO 5000 BR
 METAR LBSF 120700Z VRB02KT 8000 NSC M06/M11 Q1030 NOSIG

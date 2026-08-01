@@ -113,11 +113,6 @@
       "T_MAE": 2.4247572419582504,
       "csi_hourly": null
     },
-    "LBSF_CDRY_2024-10-07": {
-      "event": "CN",
-      "T_MAE": 3.024657124606076,
-      "csi_hourly": 0.0
-    },
     "LBSF_CDRY_2024-10-08": {
       "event": "CN",
       "T_MAE": 1.3247489656839164,
@@ -142,11 +137,6 @@
       "event": "CN",
       "T_MAE": 1.4725656142340284,
       "csi_hourly": null
-    },
-    "LBSF_CDRY_2024-10-25": {
-      "event": "FA",
-      "T_MAE": 2.7252049764044237,
-      "csi_hourly": 0.14285714285714285
     },
     "LBSF_CDRY_2024-10-27": {
       "event": "FA",
@@ -283,19 +273,9 @@
       "T_MAE": 1.8418309946348153,
       "csi_hourly": null
     },
-    "LBSF_CLDY_2024-01-18": {
-      "event": "MISS",
-      "T_MAE": 1.6223269219958993,
-      "csi_hourly": 0.0
-    },
     "LBSF_CLDY_2024-01-19": {
       "event": "HIT",
       "T_MAE": 3.1231042589611597,
-      "csi_hourly": 0.0
-    },
-    "LBSF_CLDY_2024-01-21": {
-      "event": "MISS",
-      "T_MAE": 2.090117013597336,
       "csi_hourly": 0.0
     },
     "LBSF_CLDY_2024-01-23": {
@@ -593,11 +573,6 @@
       "T_MAE": 4.254438787072459,
       "csi_hourly": null
     },
-    "LBSF_DYNM_2024-10-12": {
-      "event": "CN",
-      "T_MAE": 1.9323369134305324,
-      "csi_hourly": 0.0
-    },
     "LBSF_DYNM_2024-10-17": {
       "event": "FA",
       "T_MAE": 2.1690313254131546,
@@ -643,11 +618,6 @@
       "T_MAE": 0.5497445033052415,
       "csi_hourly": null
     },
-    "LBSF_DYNM_2025-02-02": {
-      "event": "FA",
-      "T_MAE": 2.8945519619923203,
-      "csi_hourly": 0.09090909090909091
-    },
     "LBSF_DYNM_2025-03-02": {
       "event": "FA",
       "T_MAE": 2.065081541870775,
@@ -677,6 +647,36 @@
       "event": "CN",
       "T_MAE": 2.380382869298977,
       "csi_hourly": null
+    },
+    "LBSF_CFOG_2024-10-07": {
+      "event": "CN",
+      "T_MAE": 3.024657124606076,
+      "csi_hourly": 0.0
+    },
+    "LBSF_CFOG_2024-10-25": {
+      "event": "FA",
+      "T_MAE": 2.7252049764044237,
+      "csi_hourly": 0.14285714285714285
+    },
+    "LBSF_CFOG_2024-01-18": {
+      "event": "MISS",
+      "T_MAE": 1.6223269219958993,
+      "csi_hourly": 0.0
+    },
+    "LBSF_CFOG_2024-01-21": {
+      "event": "MISS",
+      "T_MAE": 2.090117013597336,
+      "csi_hourly": 0.0
+    },
+    "LBSF_CFOG_2024-10-12": {
+      "event": "CN",
+      "T_MAE": 1.9323369134305324,
+      "csi_hourly": 0.0
+    },
+    "LBSF_CFOG_2025-02-02": {
+      "event": "FA",
+      "T_MAE": 2.8945519619923203,
+      "csi_hourly": 0.09090909090909091
     }
   }
 }

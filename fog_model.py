@@ -218,6 +218,9 @@ TERM_DEBUG = _os.environ.get("TERM_DEBUG", "0") == "1"
 LAST_RAD_TERMS = {"lw": 0.0, "sw_fog": 0.0, "sw_bg": 0.0}
 
 
+_SEB_DOY = [1]   # mutable контейнер за day_of_year → seb_step
+
+
 def seb_step(T_skin: float, T_soil: float,
              T_air0: float, qv0: float, p0: float, rho0: float,
              U0: float, lwp_col: float,
@@ -262,16 +265,35 @@ def seb_step(T_skin: float, T_soil: float,
     R_net   = LW_down - LW_up + (1.0 - ALBEDO) * sw_down
 
     # 4. Сензибилен поток (+: от повърхността към въздуха)
+    #
+    # Изгревен обмен (31.07.2026): C_H нараства плавно C_H_BULK → C_H_DAY
+    # само когато T_skin > T_air (неустойчива стратификация) И sin_el > 0.
+    # При залез T_skin пада под T_air → условието се самоизключва.
+    # hour_utc е вече аргумент на seb_step; day_of_year не е нужен,
+    # защото SOLAR_LAT/LON + EoT вече са вградени в _sin_elevation.
+    sin_el_now = _sin_elevation(hour_utc % 24, _SEB_DOY[0])
     U_eff = max(U0, U_MIN)
-    H = rho0 * cp * C_H_BULK * U_eff * (T_skin - T_air0)
+    dT_conv = float(T_skin) - float(T_air0)
+    # Плавен преход в ΔT: 0.5→1.5 K (физически — конвекция при ΔT≈0
+    # е нефизична дори денем; при CLDY нощи ΔT<1 K → рампата не се
+    # задейства → CLDY регресиите изчезват без да се засягат CFOG/CDRY).
+    dt_ramp = min(max(dT_conv - 0.5, 0.0) / 1.0, 1.0)
+    if dT_conv > 0.5 and sin_el_now > SIN_RAMP_0 and dt_ramp > 0:
+        ramp = min((sin_el_now - SIN_RAMP_0) /
+                   max(SIN_RAMP_1 - SIN_RAMP_0, 1e-6), 1.0) * dt_ramp
+        C_H_eff = C_H_BULK + ramp * (C_H_DAY - C_H_BULK)
+    else:
+        C_H_eff = C_H_BULK   # нощ/устойчиво/ΔT<0.5 — непокътнат
+    H = rho0 * cp * C_H_eff * U_eff * (T_skin - T_air0)
 
     # 5. Почвен флукс (+: от почвата към повърхността)
     G = LAMBDA_G * (T_soil - T_skin) / D_SOIL_G
 
-    # 6. Роса: кондензация върху повърхността при T_skin < Td
+    # 6. Роса: C_H ≈ C_q. При изгрев T_skin > T_air → qsat_skin > qv0
+    # → E_dew = 0 по конструкция. Усилването е безвредно денем.
     es_skin   = sat_vapor_pressure(np.array([T_skin]))[0]
     qsat_skin = eps_r * es_skin / (p0 - es_skin)
-    E_dew = max(rho0 * C_H_BULK * U_eff * (qv0 - qsat_skin), 0.0)
+    E_dew = max(rho0 * C_H_eff * U_eff * (qv0 - qsat_skin), 0.0)
     LE    = Lv * E_dew
 
     # ── ДИАГНОСТИКА SEB (когато SEB_DEBUG=1, само на кръгъл час) ──
@@ -419,13 +441,72 @@ EMISS_SFC  = 0.95    # излъчвателна способност на зем
 ALPHA_AIR  = 0.03    # SW поглъщане на чист въздух
 
 
-def _sin_elevation(hour_utc, day_of_year, lat_deg=42.7):
-    """Синус на слънчевия елевационен ъгъл по Cooper (1969)."""
-    phi  = np.deg2rad(lat_deg)
+# Местоположение по подразбиране за слънчевата геометрия. Задава се
+# от FogModel1D при построяване; модулните функции го четат, когато не
+# получат изрична стойност.
+SOLAR_LAT = 42.7
+SOLAR_LON = 25.5     # средно за България
+Z_REF_SEB = 0.5      # m — отправно ниво за SEB
+
+# ── Изгревен обмен (31.07.2026)
+# C_HN = κ²/(ln(z/z0m)·ln(z/z0h)) при z=0.5, z0m=0.03, z0h=0.003 = 0.0111
+# Излиза от грапавостта на летищна трева; не е калибрационен параметър.
+# Проверка: при sin_el=0.29 (06 UTC март, LBGO), ΔT=5 K, DZ=65 m:
+#   H = 1.2·1005·0.0111·0.67·5 ≈ 44 W/m²  →  dT/dt ≈ 2.5 K/h  ✓
+#
+# ДЕКЛАРИРАН ШЕВ: C_H_BULK=1.2e-3 нощем срещу C_H_DAY денем.
+# Нощният е също грешен (кампания: 6–25× малко), но поправката е
+# отложена до по-добра инициализация (Vaisala) — Етап 3 показа, че
+# нощната мъгла виси на компенсиран баланс и C_H×9 нощем я разсейва.
+C_H_DAY    = 0.01112  # неутрален bulk при z=0.5 m, z0m=0.03, z0h=0.003
+SIN_RAMP_0 = 0.02     # sin_el при начало на рампата (~1° над хоризонта)
+SIN_RAMP_1 = 0.15     # sin_el при пълен C_H_DAY (~9°)
+DZ_SUNRISE = 10.0     # m — смесен слой при SIN_RAMP_0
+DZ_FULL_PBL= 300.0    # m — пълен PBL при SIN_EL_PBL
+SIN_EL_PBL = 0.50     # sin_el при пълен PBL (~30°)
+
+
+def _sin_elevation(hour_utc, day_of_year, lat_deg=None, lon_deg=None):
+    """
+    Синус на слънчевия елевационен ъгъл. Деклинация по Cooper (1969).
+
+    ПОПРАВКА 31.07.2026 — часовият ъгъл ползва географската ДЪЛЖИНА.
+    Досега беше `ha = (hour_utc - 12.0) * 15.0`, тоест слънчевото пладне
+    се приемаше в 12:00 UTC. То е в 12:00 UTC само на Гринуич. За
+    България (23.4–27.8° и.д.) пладнето е в 10:09–10:26 UTC, тоест
+    моделното слънце изоставаше с 1.6–1.9 часа.
+
+    Измерени последствия преди поправката:
+      залез лято  19:35 UTC вместо 17:45   → нагряване до 20–21 UTC
+      залез зима  16:25 UTC вместо 14:45
+      изгрев зима 07:35 UTC вместо 05:50   → охлаждане до 09 UTC
+    Зимата ефектът личи по-слабо при старт 18 UTC, защото и двата
+    залеза са преди началото на прогнозата.
+
+    Остава известно приближение: уравнението на времето (±16 min) не се
+    отчита. То е втори ред спрямо поправената грешка и е отделна тема.
+    """
+    lat = SOLAR_LAT if lat_deg is None else lat_deg
+    lon = SOLAR_LON if lon_deg is None else lon_deg
+    phi  = np.deg2rad(lat)
     decl = np.deg2rad(23.45 * np.sin(np.deg2rad(360*(284+day_of_year)/365)))
-    ha   = np.deg2rad((hour_utc - 12.0) * 15.0)
+    # Уравнение на времето (Spencer 1971) — до ±16 min, добавено 31.07.2026.
+    # Причина: орбитата на Земята е елипса и аксиалният наклон не е вертикален.
+    # Формулата дава поправката в минути; прибавяме я към UTC часа.
+    B = 2.0 * np.pi * (day_of_year - 1) / 365.0
+    eot_h = (0.000075 + 0.001868*np.cos(B) - 0.032077*np.sin(B)
+             - 0.014615*np.cos(2*B) - 0.040849*np.sin(2*B)) * 229.18 / 60.0
+    # Слънчево пладне при дължина lon настъпва в (12 − lon/15 − eot/60) UTC.
+    ha   = np.deg2rad((hour_utc - 12.0 + lon / 15.0 + eot_h) * 15.0)
     return max(float(np.sin(phi)*np.sin(decl) +
                      np.cos(phi)*np.cos(decl)*np.cos(ha)), 0.0)
+
+
+def set_solar_site(lat_deg, lon_deg):
+    """Задава местоположението за слънчевата геометрия за текущия пробег."""
+    global SOLAR_LAT, SOLAR_LON
+    SOLAR_LAT = float(lat_deg)
+    SOLAR_LON = float(lon_deg)
 
 
 def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1,
@@ -903,6 +984,7 @@ class FogModel1D:
                 _ci = min(int(self.time // 3600.0), len(_cfs) - 1)
                 cf_now = float(_cfs[_ci])
 
+        _SEB_DOY[0] = self.day_of_year  # прехвърля doy до seb_step
         self.T_skin, H_sfc, E_dew, self.T_soil = seb_step(
             self.T_skin, self.T_soil,
             float(T_new[0]), float(qv_new[0]),
@@ -912,16 +994,24 @@ class FogModel1D:
             None, cf_now)
 
         # Обратна връзка: H загрява/охлажда въздуха в ефективен слой
-        # Денем SW → PBL смесване в дебел слой; нощем/мъгла — тънък
         sin_el_seb = _sin_elevation(hour_now, self.day_of_year)
-        if sin_el_seb > 0.1:          # ден — SW загрява PBL
-            DZ_EFF_SEB = 500.0
-        elif lwp_col_seb > 0.00005:     # мъгла нощем (същия праг като is_fog)
+        if sin_el_seb > SIN_RAMP_0:
+            # Растящ смесен слой: DZ_SUNRISE=10 m → DZ_FULL_PBL=300 m.
+            # Log-растеж по sin_el. При sin_el=0.29 (06 UTC март) DZ≈65 m;
+            # с C_H_DAY дава H≈44 W/m² → dT/dt≈2.5 K/h — в мишената.
+            # Нощният път (sin_el≤SIN_RAMP_0) е байт-в-байт непокътнат.
+            t = min((sin_el_seb - SIN_RAMP_0) /
+                    max(SIN_EL_PBL - SIN_RAMP_0, 1e-6), 1.0)
+            # ПОПРАВКА 31.07.2026 (измерена на LBSF 05-16, LBGO 10-05):
+            # плиткото изгревно DZ е физика на ЯСНА утрин. Под облак
+            # слоят е механично размесен и дълбок още от нощта —
+            # cf=0.9–1.0 даваше DZ=17–26 m и скок +6 K/h в първия
+            # слънчев час. Облачността вдига пода на растежа:
+            t = max(t, float(cf_now))
+            DZ_EFF_SEB = DZ_SUNRISE * (DZ_FULL_PBL / DZ_SUNRISE) ** t
+        elif lwp_col_seb > 0.00005:   # мъгла нощем
             DZ_EFF_SEB = 50.0
         else:                          # ясна нощ
-            # Плитък decoupled слой: реално изстиват първите метри,
-            # не 20m. С H~1.4 W/m²: 20m → 0.2 K/hr; 8m → ~0.5 K/hr,
-            # близо до наблюдаваните 0.8–1 K/hr в тихи ясни нощи.
             DZ_EFF_SEB = 8.0
         _d_seb = H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
         T_new[0] += _d_seb

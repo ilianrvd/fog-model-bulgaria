@@ -31,6 +31,7 @@ import urllib.parse
 import re
 import numpy as np
 from datetime import datetime, timezone, timedelta
+import pairing
 
 IEM_BASE = "https://mesonet.agron.iastate.edu/api/1/obhistory.json"
 
@@ -229,6 +230,13 @@ def obs_to_metar_dict(obs: dict) -> dict:
 # Верификация
 # ──────────────────────────────────────────────────────────────
 
+def _span_h(history):
+    """Реален хоризонт в часове — броят записи вече не е брой часове."""
+    if not history:
+        return 0.0
+    return float(history[-1].get("time_h", 0)) - float(history[0].get("time_h", 0))
+
+
 def verify_forecast(history: list, icao: str,
                     date_str: str, hour0: int,
                     all_obs: dict = None) -> dict:
@@ -256,7 +264,8 @@ def verify_forecast(history: list, icao: str,
     obs_list = all_obs.get(icao, [])
 
     print(f"\n{'═'*65}")
-    print(f"  ВЕРИФИКАЦИЯ — {icao}  {date_str} {hour0:02d} UTC → +{len(history)-1}h")
+    print(f"  ВЕРИФИКАЦИЯ — {icao}  {date_str} {hour0:02d} UTC → "
+          f"+{_span_h(history):.0f}h")
     print(f"{'═'*65}")
     print(f"  {'UTC':>5} | {'VIS_mod':>8} | {'CAT_mod':>7} | "
           f"{'VIS_obs':>8} | {'CAT_obs':>7} | {'Резултат':>10}")
@@ -265,43 +274,34 @@ def verify_forecast(history: list, icao: str,
     hits = 0; misses = 0; false_alarms = 0; correct_neg = 0
     scores = []
 
-    for r in history:
-        h_utc  = r["hour_utc"]
-        vis_mod = r["vis_sfc"]
-        cat_mod = r["cat"]
-
-        # Намираме съответното наблюдение
-        h_int = int(h_utc)
-        mn_int = int((h_utc - h_int) * 60)
-
-        # Дата на наблюдението
-        base_dt = datetime.strptime(date_str, "%Y-%m-%d")
-        delta_h = r["time_h"]
-        obs_dt  = base_dt + timedelta(hours=hour0 + delta_h)
-        obs_date_str = obs_dt.strftime("%Y-%m-%d")
-        obs_h   = obs_dt.hour
-
-        best_obs = None
-        best_diff = 45   # ±45 мин прозорец
-        for obs in obs_list:
-            t = obs["time"]
-            m = re.search(r'T(\d{2}):(\d{2})', t)
-            if not m:
-                continue
-            oh, omn = int(m[1]), int(m[2])
-            if obs_date_str not in t:
-                continue
-            diff = abs(oh * 60 + omn - obs_h * 60)
-            if diff < best_diff:
-                best_diff = diff
-                best_obs = obs
-
-        if best_obs is None:
-            print(f"  {h_utc:5.1f} | {vis_mod:8.0f} | {cat_mod:>7} | "
-                  f"{'—':>8} | {'—':>7} | {'няма obs':>10}")
+    # Сдвояване по НАБЛЮДЕНИЯ през общия модул. Старата версия обхождаше
+    # моделните записи и вземаше obs_dt.hour като цел — минутите на
+    # моделния момент се губеха, а половинчасовите METAR-и се изхвърляха.
+    base_dt   = datetime.strptime(date_str, "%Y-%m-%d").replace(
+        tzinfo=timezone.utc)
+    mod_times = [base_dt + timedelta(hours=hour0 + r["time_h"]) for r in history]
+    obs_times, obs_keep = [], []
+    for obs in obs_list:
+        try:
+            ot = datetime.strptime(obs["time"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc)
+        except (ValueError, KeyError):
             continue
+        obs_times.append(ot)
+        obs_keep.append(obs)
 
-        vis_obs = best_obs.get("vis_m") or 10000
+    for i_obs, i_mod, _dt in pairing.pair_obs_to_model(obs_times, mod_times):
+        r        = history[i_mod]
+        best_obs = obs_keep[i_obs]
+        h_utc    = r["hour_utc"]
+        vis_mod  = r["vis_sfc"]
+        cat_mod  = r["cat"]
+
+        # ВНИМАНИЕ: `or 10000` тук беше бъг — VIS = 0 при плътна мъгла е
+        # falsy и се четеше като ясно небе.
+        vis_obs = best_obs.get("vis_m")
+        if vis_obs is None:
+            vis_obs = 10000
         # Категория от наблюдението
         if vis_obs < 200:    cat_obs = "LIFR"
         elif vis_obs < 600:  cat_obs = "IFR"

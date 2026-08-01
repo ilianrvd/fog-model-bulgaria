@@ -32,6 +32,7 @@ verify_cases.py
 import sys, os, re, json, glob, time, argparse, hashlib
 import numpy as np
 from datetime import datetime, timedelta, timezone
+import pairing
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,15 +48,15 @@ START_HOUR    = 18      # UTC старт на модела (--hour)
 FORECAST_H    = 15      # хоризонт, покрива нощта до 09 UTC
 
 EVENT_VIS     = 2000.0  # праг на събитийната метрика [m]
-EVENT_MIN_HRS      = 2  # МОДЕЛЕН епизод: мин. последователни часове (шумов филтър)
-EVENT_MIN_HRS_OBS  = 1  # НАБЛЮДАВАН епизод: 1 час стига — кратката реална
-                        # мъгла (напр. 21.10: само 04h VIS=200m) Е събитие
-EVENT_END_UTC      = 7  # КАРАНТИНА: часове след 06 UTC не влизат в събитийната
-                        # метрика — изгревният преход (07-08h) има известен бъг
-                        # (T колапс при RADIATIVE→DYNAMIC на изгрев, 10-05 случая),
-                        # който прави фалшива мъгла СЛЕД нощта. Нощната физика
-                        # се оценява чисто; изгревът — отделна сесия.
 HOURLY_VIS    = 1000.0  # праг на часовата (диагностична) метрика [m]
+
+# Праговете за епизоди, карантината и сдвояването живеят в pairing.py —
+# единствен източник за трите места, които сравняват модел с METAR.
+# Старите EVENT_MIN_HRS / EVENT_MIN_HRS_OBS брояха ИНДЕКСИ в списък и
+# затова мълчаливо зависеха от каденцата на изхода; новите са в часове
+# и в брой проби. Старата карантина EVENT_END_UTC=7 реално отсичаше в
+# 08:00 (изключваше цели часове 8..15) — поведението е запазено едно към
+# едно като pairing.WIN_END_UTC = 8.0.
 
 # Критерии "готово" за етап 1 (CDRY, T верига)
 STAGE1_TMIN_ERR   = 1.5   # |грешка на T_min| < 1.5°C
@@ -208,6 +209,12 @@ def run_model(icao, date_str, hour, obs_list):
     u_m  = np.interp(z_model, profile["z"], profile["u"])
     v_m  = np.interp(z_model, profile["z"], profile["v"])
 
+    # Слънчевата геометрия по дължина — същият източник като run_case
+    import fog_model as _fm
+    from run_case import AIRPORT_COORDS as _AC
+    _c = _AC[icao]
+    _fm.set_solar_site(_c["lat"], _c["lon"])
+
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour), dt=60, day_of_year=doy)
     model.cc_series = profile.get("cc_series", [])
@@ -232,6 +239,9 @@ def run_model(icao, date_str, hour, obs_list):
 
     hourly_profs = profile.get("hourly_profiles", [])
     steps_total, steps_per_hr, dt = FORECAST_H * 60, 60, 60
+    # Каденца на записа в history. Нудж-логиката по-долу остава ЧАСОВА
+    # (steps_per_hr) — сменяме само колко често се снима състоянието.
+    steps_out = int(pairing.OUTPUT_INTERVAL_MIN * 60 / dt)
 
     import io as _io
     current_regime, current_tau = regime, tau
@@ -341,7 +351,7 @@ def run_model(icao, date_str, hour, obs_list):
             apply_nudging(model, hourly_profs[prof_idx],
                           cfg["tau_T"], current_tau)
 
-        if step % steps_per_hr == 0:
+        if step % steps_out == 0:
             model.diagnose()
 
     return model.history, regime_log
@@ -350,58 +360,52 @@ def run_model(icao, date_str, hour, obs_list):
 # ──────────────────────────────────────────────────────────────────────────
 # Оценка
 # ──────────────────────────────────────────────────────────────────────────
-def _hourly_pairs(history, obs_list, hour, date_str):
-    """Сдвоява прогнозни цели часове с най-близък METAR (±30 мин)."""
+def _model_times(history, hour, date_str):
+    """Реални UTC моменти на моделните записи."""
     t0 = datetime.strptime(date_str, "%Y-%m-%d").replace(
         hour=hour, tzinfo=timezone.utc)
-    pairs = []
+    out = []
     for h in history:
         he = h.get("time_h")
         if he is None:
-            # реконструирай от hour_utc спрямо старта
             he = (h["hour_utc"] - hour) % 24
-        t = t0 + timedelta(hours=float(he))
-        best, bdt = None, 1801
-        for o in obs_list:
-            d = abs((o["dt"] - t).total_seconds())
-            if d < bdt:
-                best, bdt = o, d
-        pairs.append((t, h, best))
-    return pairs
+        out.append(t0 + timedelta(hours=float(he)))
+    return out
 
 
-def _episodes(series_bool, min_len):
-    """[(start_idx, end_idx)] на последователности от True с дължина>=min_len."""
-    eps, s = [], None
-    for i, v in enumerate(series_bool + [False]):
-        if v and s is None:
-            s = i
-        elif not v and s is not None:
-            if i - s >= min_len:
-                eps.append((s, i - 1))
-            s = None
-    return eps
+def _pairs(history, obs_list, hour, date_str):
+    """
+    Сдвоява всяко НАБЛЮДЕНИЕ с най-близкия свободен моделен запис.
+
+    Старата версия обхождаше моделните часове и всеки си вземаше най-близък
+    METAR; при станции на 30 мин точният час винаги печелеше и половината
+    наблюдения се губеха (LBGO: 14 от 30 в нощта). Освен това един и същ
+    METAR можеше да обслужи два моделни часа, когато кръглият липсва.
+
+    Връща [(t_model, history_rec, obs)] по време на наблюдението.
+    """
+    mt = _model_times(history, hour, date_str)
+    ot = [o["dt"] for o in obs_list]
+    return [(mt[j], history[j], obs_list[i])
+            for i, j, _ in pairing.pair_obs_to_model(ot, mt)]
 
 
 def evaluate(history, obs_list, hour, date_str):
-    pairs = _hourly_pairs(history, obs_list, hour, date_str)
+    mt    = _model_times(history, hour, date_str)
+    prs   = _pairs(history, obs_list, hour, date_str)
 
     # ── часова метрика (праг 1000m) + T метрики
     hits = miss = fa = cn = 0
     mae_v, mae_t, err_0306 = [], [], []
     tmods, tobs_l = [], []
-    mod_ev, obs_ev, hrs = [], [], []
-    for t, h, o in pairs:
+    obs_t_series, obs_ev = [], []
+    for t, h, o in prs:
         vm = float(h["vis_sfc"])
         tm = float(h["T_sfc"]) - 273.15
-        hrs.append(t.hour)
-        mod_ev.append(vm < EVENT_VIS)
-        tmods.append(tm)
-        if o is None or o["vis"] is None:
-            obs_ev.append(False)
-            tobs_l.append(None)
+        if o["vis"] is None:
             continue
         vo = o["vis"]
+        obs_t_series.append(o["dt"])
         obs_ev.append(vo < EVENT_VIS)
         mae_v.append(abs(vm - vo))
         pm, po = vm < HOURLY_VIS, vo < HOURLY_VIS
@@ -410,12 +414,14 @@ def evaluate(history, obs_list, hour, date_str):
         elif po and not pm: miss += 1
         else:               cn   += 1
         if o["T"] is not None:
+            # Tmin от двете страни — САМО върху сдвоените моменти, за да
+            # не зависи от каденцата на моделния изход (при по-гъст изход
+            # моделният минимум може само да падне).
+            tmods.append(tm)
             tobs_l.append(o["T"])
             mae_t.append(abs(tm - o["T"]))
             if 3 <= t.hour <= 6:
                 err_0306.append(abs(tm - o["T"]))
-        else:
-            tobs_l.append(None)
 
     pod = hits / (hits + miss) if (hits + miss) else None
     far = fa / (hits + fa)     if (hits + fa)   else None
@@ -423,19 +429,28 @@ def evaluate(history, obs_list, hour, date_str):
 
     # T_min грешка
     t_min_err = None
-    obs_t = [x for x in tobs_l if x is not None]
-    if obs_t and tmods:
-        t_min_err = min(tmods) - min(obs_t)
+    if tobs_l and tmods:
+        t_min_err = min(tmods) - min(tobs_l)
 
-    # ── събитийна метрика (само до EVENT_END_UTC — изгревна карантина)
-    _in_win = [not (EVENT_END_UTC < hh < 16) for hh in hrs]
-    mod_ev_w = [e and w for e, w in zip(mod_ev, _in_win)]
-    obs_ev_w = [e and w for e, w in zip(obs_ev, _in_win)]
-    m_eps = _episodes(mod_ev_w, EVENT_MIN_HRS)
-    o_eps = _episodes(obs_ev_w, EVENT_MIN_HRS_OBS)
+    # ── събитийна метрика (изгревна карантина: pairing.WIN_END_UTC)
+    # Двете серии се строят всяка на СВОЯТА времева база — моделната от
+    # моделния изход, наблюдаваната само от реални METAR-и. Старият код ги
+    # държеше в един индексиран списък и вписваше False за липсващ METAR,
+    # което при по-гъст моделен изход би накъсало наблюдаваните епизоди.
+    mod_ev_w = [float(h["vis_sfc"]) < EVENT_VIS and pairing.in_night_window(t)
+                for t, h in zip(mt, history)]
+    obs_ev_w = [e and pairing.in_night_window(t)
+                for t, e in zip(obs_t_series, obs_ev)]
+
+    m_eps = pairing.episodes(mt, mod_ev_w,
+                             min_dur_h=pairing.EVENT_MIN_DUR_H,
+                             max_gap_h=pairing.MAX_GAP_H)
+    o_eps = pairing.episodes(obs_t_series, obs_ev_w,
+                             min_count=pairing.EVENT_MIN_OBS_N,
+                             max_gap_h=pairing.MAX_GAP_H)
     if m_eps and o_eps:
-        event = "HIT"
-        onset_dt = float(m_eps[0][0] - o_eps[0][0])
+        event    = "HIT"
+        onset_dt = pairing.onset_offset_h(m_eps, o_eps)
     elif m_eps and not o_eps:
         event, onset_dt = "FA", None
     elif o_eps and not m_eps:
@@ -539,6 +554,12 @@ def check_regressions(results, baselines, strict_missing=True):
     regs, missing = [], []
     cur = {r["case_id"]: r for r in results if "error" not in r}
     ran_icaos = {r["icao"] for r in results}
+    # Случаи, които СЕ ИЗПЪЛНИХА и паднаха. Не са "липсващи" — те са
+    # провал. Старият код ги изключваше от cur и гейтът обявяваше
+    # "без регресии", защото нямаше какво да сравни (31.07.2026:
+    # verify_cases внасяше rh_crit_for от върнат run_case → нула
+    # изпълнени случая → зелена присъда).
+    errored = sorted(r["case_id"] for r in results if "error" in r)
     for bname, base in baselines.items():
         for cid, b in base.get("cases", {}).items():
             r = cur.get(cid)
@@ -554,7 +575,7 @@ def check_regressions(results, baselines, strict_missing=True):
             bt, rt = b.get("T_MAE"), r["eval"]["T"]["MAE"]
             if bt is not None and rt is not None and rt > bt + 0.7:
                 regs.append(f"{bname}: {cid}  MAE_T {bt:.2f} → {rt:.2f}")
-    return regs, sorted(set(missing))
+    return regs, sorted(set(missing)), errored
 
 
 def save_baseline(name, results):
@@ -719,9 +740,10 @@ def main():
                             "date": date_str, "error": str(e)})
 
     # Регресии срещу приетите бази
-    regs, missing = check_regressions(
+    regs, missing, errored = check_regressions(
         results, baselines,
         strict_missing=not (args.category or args.date))
+    n_ok = sum(1 for r in results if "error" not in r)
 
     # Отчет
     print("\n" + "=" * 64)
@@ -742,14 +764,30 @@ def main():
         print("  → провери cases/. Метриките НЕ са сравними с базата,")
         print("    докато наборът не бъде възстановен или базата преприета.")
         print("!" * 64)
+    if errored:
+        print("\n" + "!" * 64)
+        print(f"ПАДНАЛИ СЛУЧАИ: {len(errored)} — изпълниха се и гръмнаха:")
+        for c in errored[:20]:
+            print("  ✗ " + c)
+        if len(errored) > 20:
+            print(f"  ... и още {len(errored) - 20}")
+        print("  → пробегът НЕ е валиден за сравнение с базата.")
+        print("!" * 64)
     if regs:
         print("\n" + "!" * 64)
         print("РЕГРЕСИИ спрямо приети бази:")
         for r in regs:
             print("  ⚠ " + r)
         print("!" * 64)
-    elif baselines and not missing:
-        print("[Гейт] Без регресии спрямо активните бази ✓")
+    if n_ok == 0:
+        print("\n" + "!" * 64)
+        print("НЕПЪЛЕН ПРОБЕГ — нула успешно изпълнени случая.")
+        print("  Гейтът НЕ се произнася. Липсата на регресии тук значи")
+        print("  само, че няма какво да се сравни.")
+        print("!" * 64)
+    elif baselines and not regs and not missing and not errored:
+        print(f"[Гейт] Без регресии спрямо активните бази ✓  "
+              f"({n_ok} случая)")
 
     # Запис
     os.makedirs(LOGS_DIR, exist_ok=True)
@@ -757,6 +795,8 @@ def main():
     out = {"run_utc": stamp, "config": config_snapshot(),
            "results": results, "regressions": regs,
            "missing_cases": missing,
+           "errored_cases": errored,
+           "n_evaluated": n_ok,
            "baselines_active": sorted(baselines),
            "baselines_archived": sorted(archived)}
     jpath = os.path.join(LOGS_DIR, f"verify_{stamp}.json")
