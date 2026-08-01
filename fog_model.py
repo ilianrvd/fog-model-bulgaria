@@ -211,6 +211,15 @@ C_SOIL_LAYER = 1.2e6 * 0.10   # J/m²/K — Force-Restore T_soil
 import os as _os
 SEB_DEBUG = _os.environ.get("SEB_DEBUG", "0") == "1"
 
+# Разбор на dT[0] по членове. Включи с TERM_DEBUG=1.
+TERM_DEBUG = _os.environ.get("TERM_DEBUG", "0") == "1"
+# Пълни се от two_stream_radiation, чете се от Model.step().
+# Стойностите са K/s при z[0].
+LAST_RAD_TERMS = {"lw": 0.0, "sw_fog": 0.0, "sw_bg": 0.0}
+
+
+_SEB_DOY = [1]   # mutable контейнер за day_of_year → seb_step
+
 
 def seb_step(T_skin: float, T_soil: float,
              T_air0: float, qv0: float, p0: float, rho0: float,
@@ -256,16 +265,35 @@ def seb_step(T_skin: float, T_soil: float,
     R_net   = LW_down - LW_up + (1.0 - ALBEDO) * sw_down
 
     # 4. Сензибилен поток (+: от повърхността към въздуха)
+    #
+    # Изгревен обмен (31.07.2026): C_H нараства плавно C_H_BULK → C_H_DAY
+    # само когато T_skin > T_air (неустойчива стратификация) И sin_el > 0.
+    # При залез T_skin пада под T_air → условието се самоизключва.
+    # hour_utc е вече аргумент на seb_step; day_of_year не е нужен,
+    # защото SOLAR_LAT/LON + EoT вече са вградени в _sin_elevation.
+    sin_el_now = _sin_elevation(hour_utc % 24, _SEB_DOY[0])
     U_eff = max(U0, U_MIN)
-    H = rho0 * cp * C_H_BULK * U_eff * (T_skin - T_air0)
+    dT_conv = float(T_skin) - float(T_air0)
+    # Плавен преход в ΔT: 0.5→1.5 K (физически — конвекция при ΔT≈0
+    # е нефизична дори денем; при CLDY нощи ΔT<1 K → рампата не се
+    # задейства → CLDY регресиите изчезват без да се засягат CFOG/CDRY).
+    dt_ramp = min(max(dT_conv - 0.5, 0.0) / 1.0, 1.0)
+    if dT_conv > 0.5 and sin_el_now > SIN_RAMP_0 and dt_ramp > 0:
+        ramp = min((sin_el_now - SIN_RAMP_0) /
+                   max(SIN_RAMP_1 - SIN_RAMP_0, 1e-6), 1.0) * dt_ramp
+        C_H_eff = C_H_BULK + ramp * (C_H_DAY - C_H_BULK)
+    else:
+        C_H_eff = C_H_BULK   # нощ/устойчиво/ΔT<0.5 — непокътнат
+    H = rho0 * cp * C_H_eff * U_eff * (T_skin - T_air0)
 
     # 5. Почвен флукс (+: от почвата към повърхността)
     G = LAMBDA_G * (T_soil - T_skin) / D_SOIL_G
 
-    # 6. Роса: кондензация върху повърхността при T_skin < Td
+    # 6. Роса: C_H ≈ C_q. При изгрев T_skin > T_air → qsat_skin > qv0
+    # → E_dew = 0 по конструкция. Усилването е безвредно денем.
     es_skin   = sat_vapor_pressure(np.array([T_skin]))[0]
     qsat_skin = eps_r * es_skin / (p0 - es_skin)
-    E_dew = max(rho0 * C_H_BULK * U_eff * (qv0 - qsat_skin), 0.0)
+    E_dew = max(rho0 * C_H_eff * U_eff * (qv0 - qsat_skin), 0.0)
     LE    = Lv * E_dew
 
     # ── ДИАГНОСТИКА SEB (когато SEB_DEBUG=1, само на кръгъл час) ──
@@ -343,17 +371,27 @@ def tke_step(e: np.ndarray,
     N2 = (g / theta_v) * dtheta_v
     P_buoy = -Kh * N2
 
-    # Дисипация ε = Ce * e^(3/2) / l
-    eps = Ce * e * sq_e / np.maximum(l, 0.1)
+    # ── B1 (27.07.2026): полу-имплицитна дисипация ──
+    # Беше: eps = Ce*e*sq_e/l ; e_new = e + dt*(P - eps + diff)
+    # Явният Ойлер е нестабилен: τ_дисип = l/(Ce·√e) ≈ 0.36 s при
+    # z=0.5m срещу dt=60 s. Схемата трептеше през стъпка между
+    # e_min=1e-5 и тавана 10, а Kh я следваше — беше шум, не сигнал.
+    #
+    # ε е линейна по e при замразено √e, затова:
+    #     e_new = (e + dt·P) / (1 + dt·Ce·√e/l)
+    # безусловно устойчиво (стандартно при Mellor-Yamada).
+    _sink = Ce * sq_e / np.maximum(l, 0.1)          # [1/s]
+    eps   = _sink * e                               # само за диагностика
 
-    # Дифузия на TKE: ∂/∂z(K_e * ∂e/∂z)  с K_e = Km
-    de_dz  = np.gradient(e, z)
-    flux_e = Km * de_dz * rho
-    diff_e = np.gradient(flux_e, z) / rho
+    # Източници без дифузията — тя се прилага отделно и имплицитно
+    _P = P_shear + P_buoy
+    e_new = (e + dt * _P) / (1.0 + dt * _sink)
 
-    # TKE уравнение
-    de_dt = P_shear + P_buoy - eps + diff_e
-    e_new = e + dt * de_dt
+    # ── B1: дифузия на TKE през имплицитния Thomas решател ──
+    # Беше два явни np.gradient: Km·dt/dz² ≈ 15000 при най-финия
+    # слой (dz≈0.14m, Km до 5) — също катастрофално нестабилно.
+    e_new = turbulent_diffusion(np.maximum(e_new, e_min),
+                                Km, rho, z, dt)
     # Защита: NaN/Inf → reset към e_min
     e_new = np.where(np.isfinite(e_new), e_new, e_min)
     e_new = np.clip(e_new, e_min, 10.0)   # TKE в [e_min, 10] m²/s²
@@ -403,25 +441,91 @@ EMISS_SFC  = 0.95    # излъчвателна способност на зем
 ALPHA_AIR  = 0.03    # SW поглъщане на чист въздух
 
 
-def _sin_elevation(hour_utc, day_of_year, lat_deg=42.7):
-    """Синус на слънчевия елевационен ъгъл по Cooper (1969)."""
-    phi  = np.deg2rad(lat_deg)
+# Местоположение по подразбиране за слънчевата геометрия. Задава се
+# от FogModel1D при построяване; модулните функции го четат, когато не
+# получат изрична стойност.
+SOLAR_LAT = 42.7
+SOLAR_LON = 25.5     # средно за България
+Z_REF_SEB = 0.5      # m — отправно ниво за SEB
+
+# ── Изгревен обмен (31.07.2026)
+# C_HN = κ²/(ln(z/z0m)·ln(z/z0h)) при z=0.5, z0m=0.03, z0h=0.003 = 0.0111
+# Излиза от грапавостта на летищна трева; не е калибрационен параметър.
+# Проверка: при sin_el=0.29 (06 UTC март, LBGO), ΔT=5 K, DZ=65 m:
+#   H = 1.2·1005·0.0111·0.67·5 ≈ 44 W/m²  →  dT/dt ≈ 2.5 K/h  ✓
+#
+# ДЕКЛАРИРАН ШЕВ: C_H_BULK=1.2e-3 нощем срещу C_H_DAY денем.
+# Нощният е също грешен (кампания: 6–25× малко), но поправката е
+# отложена до по-добра инициализация (Vaisala) — Етап 3 показа, че
+# нощната мъгла виси на компенсиран баланс и C_H×9 нощем я разсейва.
+C_H_DAY    = 0.01112  # неутрален bulk при z=0.5 m, z0m=0.03, z0h=0.003
+SIN_RAMP_0 = 0.02     # sin_el при начало на рампата (~1° над хоризонта)
+SIN_RAMP_1 = 0.15     # sin_el при пълен C_H_DAY (~9°)
+DZ_SUNRISE = 10.0     # m — смесен слой при SIN_RAMP_0
+DZ_FULL_PBL= 300.0    # m — пълен PBL при SIN_EL_PBL
+SIN_EL_PBL = 0.50     # sin_el при пълен PBL (~30°)
+
+
+def _sin_elevation(hour_utc, day_of_year, lat_deg=None, lon_deg=None):
+    """
+    Синус на слънчевия елевационен ъгъл. Деклинация по Cooper (1969).
+
+    ПОПРАВКА 31.07.2026 — часовият ъгъл ползва географската ДЪЛЖИНА.
+    Досега беше `ha = (hour_utc - 12.0) * 15.0`, тоест слънчевото пладне
+    се приемаше в 12:00 UTC. То е в 12:00 UTC само на Гринуич. За
+    България (23.4–27.8° и.д.) пладнето е в 10:09–10:26 UTC, тоест
+    моделното слънце изоставаше с 1.6–1.9 часа.
+
+    Измерени последствия преди поправката:
+      залез лято  19:35 UTC вместо 17:45   → нагряване до 20–21 UTC
+      залез зима  16:25 UTC вместо 14:45
+      изгрев зима 07:35 UTC вместо 05:50   → охлаждане до 09 UTC
+    Зимата ефектът личи по-слабо при старт 18 UTC, защото и двата
+    залеза са преди началото на прогнозата.
+
+    Остава известно приближение: уравнението на времето (±16 min) не се
+    отчита. То е втори ред спрямо поправената грешка и е отделна тема.
+    """
+    lat = SOLAR_LAT if lat_deg is None else lat_deg
+    lon = SOLAR_LON if lon_deg is None else lon_deg
+    phi  = np.deg2rad(lat)
     decl = np.deg2rad(23.45 * np.sin(np.deg2rad(360*(284+day_of_year)/365)))
-    ha   = np.deg2rad((hour_utc - 12.0) * 15.0)
+    # Уравнение на времето (Spencer 1971) — до ±16 min, добавено 31.07.2026.
+    # Причина: орбитата на Земята е елипса и аксиалният наклон не е вертикален.
+    # Формулата дава поправката в минути; прибавяме я към UTC часа.
+    B = 2.0 * np.pi * (day_of_year - 1) / 365.0
+    eot_h = (0.000075 + 0.001868*np.cos(B) - 0.032077*np.sin(B)
+             - 0.014615*np.cos(2*B) - 0.040849*np.sin(2*B)) * 229.18 / 60.0
+    # Слънчево пладне при дължина lon настъпва в (12 − lon/15 − eot/60) UTC.
+    ha   = np.deg2rad((hour_utc - 12.0 + lon / 15.0 + eot_h) * 15.0)
     return max(float(np.sin(phi)*np.sin(decl) +
                      np.cos(phi)*np.cos(decl)*np.cos(ha)), 0.0)
 
 
-def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
+def set_solar_site(lat_deg, lon_deg):
+    """Задава местоположението за слънчевата геометрия за текущия пробег."""
+    global SOLAR_LAT, SOLAR_LON
+    SOLAR_LAT = float(lat_deg)
+    SOLAR_LON = float(lon_deg)
+
+
+def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1,
+                        T_skin=None):
     """
     Two-stream радиационна схема (LW + SW). Връща dT/dt [K/s].
 
-    LW: F↑(z) = емисия от слоевете под z, ослабена по пътя нагоре.
+    LW: F↑(z) = емисия от повърхността + слоевете под z, ослабена
+        по пътя нагоре.
         F↓(z) = емисия от атмосферата над z, ослабена надолу.
         Нагряване = -d(F↑ - F↓)/dz / (ρ·cp)
 
     SW: Flux отгоре надолу, ослабен от мъглата.
-        Загряване = -dSW/dz · absorption / (ρ·cp)
+        Загряване = +dSW/dz · absorption / (ρ·cp)
+
+    T_skin [K] — температура на повърхността от SEB. Ако е подадена,
+    основата на F↑ излъчва от нея; иначе (None) се пада обратно на
+    T[0], което е СТАРОТО поведение и се пази само за съвместимост
+    с обвивките longwave_cooling/solar_heating.
     """
     nz    = len(T)
     dz    = np.gradient(z)
@@ -434,10 +538,16 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     # ── F↑: flux нагоре на ниво i ──
     # = емисия от земята + емисия от слоевете j < i,
     #   всяка ослабена с τ(j→i) = exp(-K * (LWP_path[i] - LWP_path[j]))
+    # Емисия на ПОВЪРХНОСТТА (не на приземния въздух).
+    # Това е връзката, през която охлаждащият се въздух получава
+    # обратно топлина от по-топлата кожа — отрицателната обратна
+    # връзка, чиято липса позволяваше разкъсване T_skin/T_air.
+    B_sfc = sigma * float(T_skin) ** 4 if T_skin is not None else B[0]
+
     F_up = np.zeros(nz)
     for i in range(nz):
         # Земна повърхност
-        F_up[i] = EMISS_SFC * B[0] * np.exp(-K_EXT_LW * lwp_path[i])
+        F_up[i] = EMISS_SFC * B_sfc * np.exp(-K_EXT_LW * lwp_path[i])
         # Слоеве j < i
         for j in range(i):
             eps_j   = 1.0 - np.exp(-K_EXT_LW * lwc_vol[j] * dz[j])
@@ -478,23 +588,23 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     # Реални стойности от PAFOG верификации: макс ~0.8 K/hr в мъглата
     lwp_col = float(lwp_path[-1])
 
-    # ── Радиационно екраниране ВЪТРЕ в мъглата (19.07.2026) ──
-    # Консистентност със SEB is_fog фикса (праг 0.00005 kg/m²):
-    # SEB вече третира мъглата като черно тяло за T_skin; тук същото
-    # важи за въздушните нива ВЪТРЕ в мъгления слой. Физика (PAFOG):
-    # вътрешността на мъглата е радиационно екранирана — охлаждането
-    # се случва на ВЪРХА на мъглата, не вътре в нея. Без това моделната
-    # плитка мъгла (реално ~2m дълбока, LWP≈0.0001 → τ_LW≈0.015,
-    # прозрачна за многослойната схема) оставя T_air да се охлажда
-    # свободно, докато T_skin е стабилизирана → нефизично разкъсване
-    # T_skin/T_air (LBPD 2025-02-25: T_air −8.3°C при T_skin ~0°C).
-    # Вътре в мъглата: LW охлаждане ограничено до 0.15 K/hr.
-    if lwp_col > 0.00005:
-        _fog_mask = ql > 1e-6
-        if np.any(_fog_mask):
-            _fog_top_idx = int(np.max(np.where(_fog_mask)[0]))
-            _shield = -0.15 / 3600.0   # K/s
-            dQ_lw[:_fog_top_idx] = np.maximum(dQ_lw[:_fog_top_idx], _shield)
+    # ── ПРЕМАХНАТО 27.07.2026: радиационен щит вътре в мъглата ──
+    # Беше:  if lwp_col > 0.00005:  dQ_lw[:fog_top] = max(dQ_lw, -0.15/3600)
+    #
+    # Въведен на 19.07 срещу разкъсване T_skin/T_air. И двете причини
+    # за онова разкъсване вече са отстранени:
+    #   v16b — знакът на SW поглъщането (слънцето охлаждаше мъглата)
+    #   v17  — F↑ в основата излъчва от T_skin, не от T_въздух[0];
+    #          това е отрицателната обратна връзка, която липсваше
+    #
+    # Освен това условието му беше по LWP (маса), докато екранирането
+    # зависи от τ. При реалните LWP ~5e-5 kg/m² τ_LW ≈ 0.007 — мъглата
+    # е радиационно прозрачна и няма какво да екранира. Получаваше се
+    # затворен кръг: мъглата не може да се сгъсти, защото щитът спира
+    # охлаждането, което би я сгъстило. Измерено при LBGO 2025-02-25:
+    # 6h LW=-0.15 (щит) срещу 7h LW=-0.80 (без щит) — реже 5.3 пъти.
+    #
+    # max_cool по-долу остава единственият предпазител.
     # ────────────────────────────────────────────────
 
     # max_cool варира плавно с LWP
@@ -505,6 +615,9 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
     dQ_lw = np.maximum(dQ_lw, -max_cool)   # ограничаваме охлаждането
 
     dQ_dt += dQ_lw
+    LAST_RAD_TERMS["lw"] = float(dQ_lw[0])
+    LAST_RAD_TERMS["sw_fog"] = 0.0
+    LAST_RAD_TERMS["sw_bg"] = 0.0
 
     # ── SW flux надолу ──
     sin_el = _sin_elevation(hour_utc, day_of_year)
@@ -515,12 +628,16 @@ def two_stream_radiation(T, ql, z, rho, hour_utc, day_of_year=1):
         fog_mask  = ql > 1e-5
         absorpt   = np.where(fog_mask, 1.0 - ALBEDO_FOG, ALPHA_AIR)
         # В мъглата: поглъщане от дивергенцията на flux-а
-        dQ_dt += -np.gradient(SW_dn, z) * absorpt / (rho * cp)
+        _sw_fog = np.gradient(SW_dn, z) * absorpt / (rho * cp)
+        dQ_dt += _sw_fog
+        LAST_RAD_TERMS["sw_fog"] = float(_sw_fog[0])
         # При ясно небе: фонов SW член (водна пара поглъща в целия PBL)
         # dT/dt_SW = SW_sfc * alpha_bulk / (rho * cp * H_pbl)
         # alpha_bulk~0.1, H_pbl~1000m → ~0.3 K/hr при обед
         H_pbl = max(z[-1], 500.0)
-        dQ_dt += SW_top * ALPHA_AIR * 3.0 / (rho * cp * H_pbl)
+        _sw_bg = SW_top * ALPHA_AIR * 3.0 / (rho * cp * H_pbl)
+        dQ_dt += _sw_bg
+        LAST_RAD_TERMS["sw_bg"] = float(np.atleast_1d(_sw_bg)[0])
 
     # ── Фоново LW охлаждане при ясно небе ──────────────────────────────────────
     # При ясно небе (без мъгла) two-stream дава ~0 охлаждане защото
@@ -783,6 +900,15 @@ class FogModel1D:
         qv = self.qv.copy()
         ql = self.ql.copy()
 
+        # ── TERM_DEBUG: разбор на dT[0] по членове ──
+        _hr_dbg = (self.hour0 + self.time / 3600.0) % 24.0
+        _dbg = TERM_DEBUG and abs(_hr_dbg - round(_hr_dbg)) < 0.009
+        _t_in = float(T[0])
+        # Всичко, което се е случило МЕЖДУ две извиквания на step()
+        # (на практика apply_nudging от run_case.py):
+        _d_ext = _t_in - getattr(self, "_t0_prev", _t_in)
+        _d_diff = _d_rad = _d_seb = _d_mic = 0.0
+
         # 1. Потенциална температура
         theta    = T_to_theta(T, self.p)
         theta_v  = virtual_potential_temp(theta, qv, ql)
@@ -807,6 +933,7 @@ class FogModel1D:
         qv_new = turbulent_diffusion(qv, Kh, self.rho, self.z, self.dt)
         ql_new = turbulent_diffusion(ql, Km, self.rho, self.z, self.dt)
         ql_new = np.maximum(ql_new, 0.0)
+        _d_diff = float(T_new[0]) - _t_in
 
         # Защита срещу NaN от TKE нестабилност
         if not np.all(np.isfinite(T_new)):
@@ -817,12 +944,14 @@ class FogModel1D:
         # 4. Радиация
         hour_now = (self.hour0 + self.time / 3600.0) % 24.0
         dT_rad = two_stream_radiation(
-            T_new, ql_new, self.z, self.rho, hour_now, self.day_of_year)
+            T_new, ql_new, self.z, self.rho, hour_now, self.day_of_year,
+            T_skin=self.T_skin)
 
         # К2 resolved: cap премахнат.
         # TKE+Louis хибрид осигурява физическото ограничение на охлаждането.
         # Soil flux (при G<0) допълнително стабилизира при студена почва.
         T_new += dT_rad * self.dt
+        _d_rad = float(dT_rad[0]) * self.dt
 
         # 5. Surface Energy Balance (SEB) — Fable5 дизайн
         sw_down_seb = solar_sw_down(hour_now, self.day_of_year)
@@ -855,6 +984,7 @@ class FogModel1D:
                 _ci = min(int(self.time // 3600.0), len(_cfs) - 1)
                 cf_now = float(_cfs[_ci])
 
+        _SEB_DOY[0] = self.day_of_year  # прехвърля doy до seb_step
         self.T_skin, H_sfc, E_dew, self.T_soil = seb_step(
             self.T_skin, self.T_soil,
             float(T_new[0]), float(qv_new[0]),
@@ -864,18 +994,27 @@ class FogModel1D:
             None, cf_now)
 
         # Обратна връзка: H загрява/охлажда въздуха в ефективен слой
-        # Денем SW → PBL смесване в дебел слой; нощем/мъгла — тънък
         sin_el_seb = _sin_elevation(hour_now, self.day_of_year)
-        if sin_el_seb > 0.1:          # ден — SW загрява PBL
-            DZ_EFF_SEB = 500.0
-        elif lwp_col_seb > 0.00005:     # мъгла нощем (същия праг като is_fog)
+        if sin_el_seb > SIN_RAMP_0:
+            # Растящ смесен слой: DZ_SUNRISE=10 m → DZ_FULL_PBL=300 m.
+            # Log-растеж по sin_el. При sin_el=0.29 (06 UTC март) DZ≈65 m;
+            # с C_H_DAY дава H≈44 W/m² → dT/dt≈2.5 K/h — в мишената.
+            # Нощният път (sin_el≤SIN_RAMP_0) е байт-в-байт непокътнат.
+            t = min((sin_el_seb - SIN_RAMP_0) /
+                    max(SIN_EL_PBL - SIN_RAMP_0, 1e-6), 1.0)
+            # ПОПРАВКА 31.07.2026 (измерена на LBSF 05-16, LBGO 10-05):
+            # плиткото изгревно DZ е физика на ЯСНА утрин. Под облак
+            # слоят е механично размесен и дълбок още от нощта —
+            # cf=0.9–1.0 даваше DZ=17–26 m и скок +6 K/h в първия
+            # слънчев час. Облачността вдига пода на растежа:
+            t = max(t, float(cf_now))
+            DZ_EFF_SEB = DZ_SUNRISE * (DZ_FULL_PBL / DZ_SUNRISE) ** t
+        elif lwp_col_seb > 0.00005:   # мъгла нощем
             DZ_EFF_SEB = 50.0
         else:                          # ясна нощ
-            # Плитък decoupled слой: реално изстиват първите метри,
-            # не 20m. С H~1.4 W/m²: 20m → 0.2 K/hr; 8m → ~0.5 K/hr,
-            # близо до наблюдаваните 0.8–1 K/hr в тихи ясни нощи.
             DZ_EFF_SEB = 8.0
-        T_new[0] += H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
+        _d_seb = H_sfc * self.dt / (self.rho[0] * cp * DZ_EFF_SEB)
+        T_new[0] += _d_seb
 
         # Роса: изважда влага от приземното ниво
         qv_new[0] -= E_dew * self.dt / (self.rho[0] * DZ_EFF_SEB)
@@ -899,6 +1038,7 @@ class FogModel1D:
         qv_new += dqv
         ql_new += dql
         T_new  += dT_mic
+        _d_mic = float(dT_mic[0])
 
         # 6. Утаяване
         dql_set = apply_settling(ql_new, self.dz, self.dt)
@@ -906,6 +1046,22 @@ class FogModel1D:
 
         # 7. Обновяване на плътността
         self.rho = self.p / (Rd * T_new)
+
+        # ── TERM_DEBUG печат (K/hr при z[0]) ──
+        if _dbg:
+            _k = 3600.0 / self.dt
+            _r = LAST_RAD_TERMS
+            print(f"    TERM {_hr_dbg:4.1f}h [K/hr @z0] "
+                  f"дифуз={_d_diff * _k:+7.2f} "
+                  f"LW={_r['lw'] * 3600.0:+7.2f} "
+                  f"SWмъгла={_r['sw_fog'] * 3600.0:+8.2f} "
+                  f"SWфон={_r['sw_bg'] * 3600.0:+6.2f} "
+                  f"SEB={_d_seb * _k:+7.2f} "
+                  f"микроф={_d_mic * _k:+7.2f} "
+                  f"| външно={_d_ext * _k:+8.2f} "
+                  f"| сума={(float(T_new[0]) - _t_in) * _k:+8.2f} "
+                  f"DZ={DZ_EFF_SEB:.0f}", flush=True)
+        self._t0_prev = float(T_new[0])
 
         # Запазваме
         self.T  = T_new

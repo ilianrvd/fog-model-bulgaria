@@ -17,7 +17,11 @@ from icon_reader    import fetch_icon_eu, fetch_icon_eu_all, AIRPORT_COORDS
 from metar_fetcher  import fetch_all_airports
 from ogimet_fetcher import fetch_metar_ogimet, fetch_all_ogimet_parallel
 from metar_parser   import parse_metar, apply_metar_correction
-from run_case       import build_surface_layer, diagnose_regime, apply_nudging, AIRPORT_CONFIG, get_sst
+from run_case       import (build_surface_layer, diagnose_regime,
+                            apply_nudging, AIRPORT_CONFIG)
+# get_sst е премахнат (31.07.2026) заедно с мъртвата конфигурация
+# sst_month / sea_sector / N_d — никога не се четяха. Тук беше
+# само неизползван импорт.
 
 ALL_AIRPORTS = ["LBSF", "LBWN", "LBBG", "LBPD", "LBGO"]
 
@@ -78,6 +82,13 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     p_m  = np.interp(z_model, profile["z"], profile["p"])
     u_m  = np.interp(z_model, profile["z"], profile["u"])
     v_m  = np.interp(z_model, profile["z"], profile["v"])
+
+    # Слънчевата геометрия зависи от географската дължина (31.07.2026).
+    # Без това пладнето се смята за средната дължина 25.5E и грешката
+    # достига 6 минути на изток/запад. Задава се преди пробега.
+    import fog_model as _fm
+    _c = AIRPORT_COORDS[icao]
+    _fm.set_solar_site(_c["lat"], _c["lon"])
 
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=profile["hour0"], dt=dt, day_of_year=doy)
