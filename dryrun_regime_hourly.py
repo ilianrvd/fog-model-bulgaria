@@ -43,6 +43,14 @@ except (AttributeError, ValueError):
 
 CONTINENTAL = ("LBSF", "LBPD", "LBGO")
 
+# Измерен байъс ICON−METAR по летище (compare_wind_sources.py, 12.08.2026),
+# прозорец 18–06 UTC, стара база 288 случая:
+#   LBSF -1.33 kt   LBPD -1.12 kt   LBGO +0.44 kt
+# ICON системно ПОДЦЕНЯВА вятъра в LBSF/LBPD (котловина) и леко го
+# НАДЦЕНЯВА в LBGO. Прагът, калибриран по METAR, трябва да се измести
+# със същия знак, за да хване същата физическа скорост.
+ICON_BIAS_KT = {"LBSF": -1.33, "LBPD": -1.12, "LBGO": +0.44}
+
 # Прозорецът, по който се съди: 18–06 UTC (по искане на Илиан).
 # Изгревът е извън него — там режимът се сменя по слънчева причина.
 WIN_START, WIN_END = 18, 6
@@ -137,59 +145,72 @@ def fog_hours(rec):
 # ──────────────────────────────────────────────────────────────
 
 def run_threshold(rows, thr, source, buffer_n):
+    """
+    thr: число (общ праг за всички) ИЛИ dict {icao: праг}.
+    При source='icon' и подаден thr_metar_equiv=None, тук се очаква
+    прагът вече да е в ICON-мащаб — извикващият код прави корекцията.
+    """
     out = []
     for r in rows:
         winds = r["_w"]
         if not winds:
             continue
-        start = r.get("regime_start") or "radiative"
-        # Стартът се преизчислява по същия критерий, за да е сравнимо:
-        # автоматът не наследява стария diagnose_regime.
-        h0 = min(winds, key=hour_key)
-        start = "dynamic" if winds[h0] >= thr else "radiative"
-        log, dom, sw = simulate(winds, thr, start, buffer_n)
+        this_thr = thr[r["icao"]] if isinstance(thr, dict) else thr
 
-        # Часът с минимален вятър — най-вероятният момент за
-        # радиационно образуване.
+        h0 = min(winds, key=hour_key)
+        start = "dynamic" if winds[h0] >= this_thr else "radiative"
+        log, dom, sw = simulate(winds, this_thr, start, buffer_n)
+
         h_calm = min(winds, key=lambda h: winds[h]) if winds else None
         reg_calm = log.get(h_calm) if h_calm is not None else None
 
         out.append({
             "rec": r, "log": log, "dominant": dom, "switches": sw,
             "h_calm": h_calm, "v_calm": winds.get(h_calm),
-            "regime_at_calm": reg_calm,
+            "regime_at_calm": reg_calm, "thr_used": this_thr,
             "n_dyn": sum(1 for v in log.values() if v == "dynamic"),
             "n_rad": sum(1 for v in log.values() if v == "radiative"),
         })
     return out
 
 
-def print_table(rows, thresholds, source, buffer_n):
+def icon_equiv_thresholds(thr_metar, icaos):
+    """Превежда METAR-калибриран праг в ICON-скала по измерения байъс."""
+    return {icao: thr_metar + ICON_BIAS_KT.get(icao, 0.0) for icao in icaos}
+
+
+def print_table(rows, thresholds, source, buffer_n, per_airport=False):
     base = Counter(r.get("event") for r in rows)
     b_h, b_m, b_f = base["HIT"], base["MISS"], base["FA"]
     b_csi = b_h / max(b_h + b_m + b_f, 1)
     print(f"\n  База: HIT={b_h} MISS={b_m} FA={b_f} CN={base['CN']}   "
           f"CSI={b_csi:.3f}   ({len(rows)} случая)")
 
-    print(f"\n  {'праг':>5} │ {'ср. прев.':>9} {'осцил.':>7} │ "
+    label = "METAR-екв. праг" if per_airport else "праг"
+    print(f"\n  {label:>16} │ {'ср. прев.':>9} {'осцил.':>7} │ "
           f"{'dyn при тихо':>13} │ {'FA':>4} {'HIT':>4} {'MISS':>5} {'CN':>4}")
-    print("  " + "-" * 66)
+    print("  " + "-" * 76)
 
+    icaos = sorted(set(r["icao"] for r in rows))
     for thr in thresholds:
-        res = run_threshold(rows, thr, source, buffer_n)
+        eff_thr = icon_equiv_thresholds(thr, icaos) if per_airport else thr
+        res = run_threshold(rows, eff_thr, source, buffer_n)
         if not res:
             continue
         sw = [x["switches"] for x in res]
         osc = sum(1 for x in res if x["switches"] >= 3)
 
-        # Случаи, при които в НАЙ-ТИХИЯ час режимът е dynamic — тоест
-        # автоматът би потиснал охлаждането точно когато мъглата се прави
         dyn_calm = [x for x in res if x["regime_at_calm"] == "dynamic"]
         ev = Counter(x["rec"].get("event") for x in dyn_calm)
 
-        print(f"  {thr:>5.1f} │ {statistics.mean(sw):>9.2f} {osc:>7} │ "
+        print(f"  {thr:>16.1f} │ {statistics.mean(sw):>9.2f} {osc:>7} │ "
               f"{len(dyn_calm):>13} │ {ev['FA']:>4} {ev['HIT']:>4} "
               f"{ev['MISS']:>5} {ev['CN']:>4}")
+
+    if per_airport:
+        print(f"\n  Праговете по летище (при METAR-екв. 3.0):")
+        for icao in icaos:
+            print(f"    {icao}: {icon_equiv_thresholds(3.0, icaos)[icao]:.2f} kt")
 
     print("\n  ср. прев.   = среден брой превключвания на случай")
     print("  осцил.      = случаи с ≥3 превключвания (нестабилен автомат)")
@@ -198,10 +219,14 @@ def print_table(rows, thresholds, source, buffer_n):
     print("                мъглата би се образувала")
 
 
-def print_detail(rows, thr, source, buffer_n, only_event=None):
-    res = run_threshold(rows, thr, source, buffer_n)
-    print(f"\n  ПОДРОБНО при праг {thr} kt "
-          f"(вятър: {source.upper()}, буфер {buffer_n}):")
+def print_detail(rows, thr, source, buffer_n, only_event=None,
+                 per_airport=False):
+    icaos = sorted(set(r["icao"] for r in rows))
+    eff_thr = icon_equiv_thresholds(thr, icaos) if per_airport else thr
+    res = run_threshold(rows, eff_thr, source, buffer_n)
+    print(f"\n  ПОДРОБНО при METAR-екв. праг {thr} kt "
+          f"(вятър: {source.upper()}, буфер {buffer_n}"
+          f"{', байъс-коригиран по летище' if per_airport else ''}):")
     print(f"  {'случай':<28}{'изход':>6}{'прев.':>6}{'dyn/rad':>9}"
           f"{'тих час':>9}{'V':>6}{'режим там':>11}")
     print("  " + "-" * 76)
@@ -231,6 +256,9 @@ def main():
     ap.add_argument("--detail-event", default=None,
                     help="Само за този изход в подробния списък")
     ap.add_argument("--all-airports", action="store_true")
+    ap.add_argument("--per-airport-bias", action="store_true",
+                    help="При --source icon: измества прага по летище с "
+                         "измерения METAR-ICON байъс (compare_wind_sources)")
     args = ap.parse_args()
 
     with open(args.diag, encoding="utf-8") as f:
@@ -246,21 +274,28 @@ def main():
     scope = "всички летища" if args.all_airports else \
             "континентални (" + ", ".join(CONTINENTAL) + ")"
 
+    per_ab = args.per_airport_bias and args.source == "icon"
+
     print("=" * 70)
     print(f"  ПОЧАСОВ РЕЖИМЕН АВТОМАТ — {scope}")
     print(f"  Прозорец {WIN_START}–{WIN_END:02d} UTC · вятър: "
-          f"{args.source.upper()} · буфер: {args.buffer}")
+          f"{args.source.upper()} · буфер: {args.buffer}"
+          f"{'  · байъс-коригиран по летище' if per_ab else ''}")
     print("=" * 70)
     if n_excl:
         print(f"  ({n_excl} валежни случая изключени от целия набор)")
     print("\n  ВНИМАНИЕ: това НЕ е прогноза за CSI. Показва поведението на")
     print("  автомата и кои случаи биха попаднали в dynamic в критичния час.")
+    if args.source == "icon" and not per_ab:
+        print("\n  ЗАБЕЛЕЖКА: ICON има измерен байъс спрямо METAR (LBSF -1.33,")
+        print("  LBPD -1.12, LBGO +0.44 kt). Без --per-airport-bias прагът")
+        print("  тук е в 'суров' ICON вятър — сравни с --per-airport-bias.")
 
-    print_table(rows, args.thresholds, args.source, args.buffer)
+    print_table(rows, args.thresholds, args.source, args.buffer, per_ab)
 
     if args.detail is not None:
         print_detail(rows, args.detail, args.source, args.buffer,
-                     args.detail_event)
+                     args.detail_event, per_ab)
 
 
 if __name__ == "__main__":
