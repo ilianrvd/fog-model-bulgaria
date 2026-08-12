@@ -27,7 +27,6 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 import warnings
-import os as _os
 warnings.filterwarnings("ignore")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -203,22 +202,7 @@ C_H_BULK = 1.2e-3    # bulk аеродинамичен коефициент (к�
 EPS_SFC  = 0.97      # емисивност на повърхността
 ALBEDO   = 0.20      # албедо
 LAMBDA_G = 0.5       # W/m/K
-# D_SOIL_G: дебелина на слоя за G = LAMBDA_G*(T_soil-T_skin)/D_SOIL_G.
-#
-# ЗАБЕЛЕЖКА (12.08.2026): мъртвият soil_heat_flux() (виж по-долу в
-# файла) използва d_soil=0.10 m за СЪЩАТА физическа величина — двете
-# числа никога не са били сверени едно с друго. 0.10 m отговаря и на
-# damping depth √(2·Lambda/(C_soil·omega_d)) ≈ 0.107 m за дневния
-# цикъл при тези Lambda/C_soil; 0.05 изглежда произволна половина.
-#
-# Диагностика на LBGO_CFOG_2024-11-01 (MISS клас, Tmin_err+4.76K):
-# при D_SOIL_G=0.05 G достига 40-50 W/m² цяла нощ (извън литературния
-# диапазон 10-30% от Rnet); при 0.10, ceteris paribus, G пада до и
-# остава в 10-11 W/m² — без нужда от клип на dT_soil/dt.
-#
-# Default остава 0.05 — byte-identical с преди 12.08.2026. Override за
-# сензитивен тест: D_SOIL_G_OVERRIDE=0.10
-D_SOIL_G = float(_os.environ.get("D_SOIL_G_OVERRIDE", "0.05"))
+D_SOIL_G = 0.05      # m
 U_MIN    = 0.3       # m/s
 C_SOIL_LAYER = 1.2e6 * 0.10   # J/m²/K — Force-Restore T_soil
 
@@ -229,68 +213,6 @@ SEB_DEBUG = _os.environ.get("SEB_DEBUG", "0") == "1"
 
 # Разбор на dT[0] по членове. Включи с TERM_DEBUG=1.
 TERM_DEBUG = _os.environ.get("TERM_DEBUG", "0") == "1"
-
-# ──────────────────────────────────────────────────────────────────────
-# D1 — ОГРАНИЧЕНАТА ВРАТА (11.08.2026)
-#
-# Долната клетка беше изключена от дифузионния оператор (Дирихле под
-# коментар "Neumann"). Измерено на LBSF_CLDY_2024-12-10: `дифуз=+0.00`
-# във ВСЕКИ час на 12-часова нощ. Следствия, всички измерени:
-#   - SEB излива −3 K/hr в клетка без изход нагоре (реално 0.5 K/hr)
-#   - RH лети 87→99 % за два часа; сухият въздух на 30 m е недостъпен
-#   - LWC има таван ~0.1 g/m³ → моделът НИКОГА не прави VIS под ~420 m
-#     (0 от 73 мъглени изхода под 300 m)
-#
-# D1 отваря вратата, но клипва Kh САМО на интерфейса z[0]–z[1].
-# Изключено по подразбиране: включва се с D1_DOOR=1.
-# ──────────────────────────────────────────────────────────────────────
-D1_DOOR   = _os.environ.get("D1_DOOR", "0") == "1"
-# Таван на Kh на вратата [m²/s].
-#
-# ВНИМАНИЕ за мащаба: РЕАЛНАТА мрежа (run_case.py / verify_cases.py,
-# logspace(0.5,50,20)+linspace(55,2000,20)) има dz[0] = 0.137 m — още
-# по-тънка, отколкото първоначално оценено. Характерното време за
-# изравняване през вратата е
-#     tau = dz[0]·dz_full[0] / K
-# При K=0.0001 tau ≈ 3.1 min — ред на величината на реалния нощен обмен.
-# (Тестовете в test_D1_door.py по-рано ползваха измислена мрежа с
-# dz[0]=0.47 m — 3.4× по-дебела; поправено 12.08.2026, виж бележката
-# в make_column() там.)
-#
-# C1 диагнозата даде 0.001–0.1 m²/s като реално нощно устойчиво Kh;
-# долният край на този интервал, преизчислен за истинската мрежа.
-D1_KH_MAX = float(_os.environ.get("D1_KH_MAX", "0.0001"))
-
-# ──────────────────────────────────────────────────────────────────────
-# D2 — РАЗХЛАБЕН КЛИП НА T_SOIL (12.08.2026)
-#
-# seb_step() смята Force-Restore охлаждане на почвата (ред ~347), но
-# клипва dT_soil на ±0.2 K/hr. Измерено на LBGO_CFOG_2024-11-01: реалният
-# дефицит (от G = LAMBDA_G·(T_soil-T_skin)/D_SOIL_G с наблюдаваната
-# ΔT≈4-5K) иска охлаждане 0.5-1.0 K/hr в първите часове. Клипът държи
-# T_soil изкуствено топла (8.1°C в 05h вместо естествените ~3.85°C),
-# G остава +40-51 W/m² цяла нощ, приземният слой никога не се откача от
-# почвения подпор. Диагноза за целия MISS клас на LBGO (Tmin_err средно
-# +2.79K) — засяга ВСИЧКИ летища еднакво в кода, но ефектът зависи от
-# стартовия ΔT(T_soil-T_skin), който варира по случай и летище.
-#
-# Изключено по подразбиране: включва се с D2_SOIL=1.
-# ──────────────────────────────────────────────────────────────────────
-D2_SOIL         = _os.environ.get("D2_SOIL", "0") == "1"
-# Таван на |dT_soil/dt| [K/hr]. 0.2 е старото (де факто изключващо
-# охлаждането при силен дефицит).
-#
-# ПРИЕТО 12.08.2026 след пълен гейт (288 случая): 0.5 K/hr.
-#   0.2 (старо)  → LBGO MISS клас непроменен, диагнозата, която откри D2
-#   1.5 (пробвано първо) → CSI 0.383, MAE_T 2.171, 152 регресии навсякъде,
-#                    включително HIT/CN нощи без връзка с почвен дефицит —
-#                    свръхагресивно извън целевия клас
-#   0.5 (прието)  → CSI 0.402, MAE_T 1.794, 39 регресии, LBGO MISS 10→4,
-#                    нула нови регресии на самия LBGO
-# Клипът действа само когато естественият дефицит (G/C_layer) го
-# надхвърли — по конструкция условен, не изисква отделен праг по ΔT.
-D2_SOIL_MAX_KHR = float(_os.environ.get("D2_SOIL_MAX_KHR", "0.5"))
-
 # Пълни се от two_stream_radiation, чете се от Model.step().
 # Стойностите са K/s при z[0].
 LAST_RAD_TERMS = {"lw": 0.0, "sw_fog": 0.0, "sw_bg": 0.0}
@@ -389,15 +311,8 @@ def seb_step(T_skin: float, T_soil: float,
     dT_skin = dt * (R_net - H + G + LE) / C_SKIN
     dT_skin = float(np.clip(dT_skin, -2.0, 2.0))   # единствена защита
 
-    # Force-Restore T_soil.
-    # D2 (12.08.2026): старият клип ±0.2 K/hr реже физически легитимно
-    # охлаждане при силен ΔT(T_soil-T_skin) — измерено на LBGO: реалният
-    # дефицит иска 0.5-1.0 K/hr, клипът държи почвата изкуствено топла
-    # и G остава завишен цяла нощ. При D2_SOIL=0 поведението е
-    # байт-в-байт старото (0.2 K/hr).
-    _soil_clip_khr = D2_SOIL_MAX_KHR if D2_SOIL else 0.2
-    dT_soil = float(np.clip(-G * dt / C_SOIL_LAYER,
-                            -_soil_clip_khr*dt/3600., _soil_clip_khr*dt/3600.))
+    # Force-Restore T_soil — бавно охлаждане нощем (max 0.5 K/hr)
+    dT_soil = float(np.clip(-G * dt / C_SOIL_LAYER, -0.2*dt/3600., 0.2*dt/3600.))
 
     return T_skin + dT_skin, H, E_dew, T_soil + dT_soil
 
@@ -824,38 +739,10 @@ def apply_settling(ql: np.ndarray, dz: float, dt: float) -> np.ndarray:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def turbulent_diffusion(phi: np.ndarray, K: np.ndarray,
-                        rho: np.ndarray, z: np.ndarray, dt: float,
-                        bottom: str = "dirichlet",
-                        k_door: float = None) -> np.ndarray:
+                        rho: np.ndarray, z: np.ndarray, dt: float) -> np.ndarray:
     """
     Имплицитна дифузия на скалара phi с коефициент K.
     Решава: phi_new = phi + dt * d/dz(K * dphi/dz)
-
-    bottom:
-      "dirichlet" — историческото поведение: phi_new[0] = phi[0].
-                    Долната клетка е ИЗКЛЮЧЕНА от оператора. Коментарът
-                    в кода твърдеше "Neumann", но b[0]=1, c[0]=0 е
-                    Дирихле. Оставено като подразбиране, за да е
-                    превключването експлицитно.
-      "neumann"   — D1: нулев поток през дъното, но клетката ОБМЕНЯ с
-                    z[1]. Това е вратата.
-
-    k_door: таван на Kh САМО на интерфейса z[0]–z[1] [m²/s].
-            None = без клип.
-
-    Защо клип (D1, 11.08.2026)
-    --------------------------
-    B2, B2′ и C1 отвориха дъното при Kh, което е 10–100× завишено заради
-    замразения импулс (`self.u`/`self.v` не се обновяват). Резултатът и
-    трите пъти: инверсията се размива мигновено — C1 даде 1.4 K охлаждане
-    за нощта срещу реални 9 K.
-
-    Kh в останалата колона НЕ се пипа: там завишението компенсира
-    замразения срез. Клипва се само вратата, с числото, което самата C1
-    диагноза изчисли за реално нощно устойчиво: 0.01–0.1 m²/s.
-
-    Това е компенсация, не чиста физика — но е на мястото, където
-    дефектът действа, с измерено число.
     """
     n  = len(phi)
     dz = np.diff(z)
@@ -863,11 +750,6 @@ def turbulent_diffusion(phi: np.ndarray, K: np.ndarray,
 
     # Интерфейсни K-стойности
     K_int = 0.5 * (K[:-1] + K[1:])
-
-    # D1: таван само на най-долния интерфейс
-    if k_door is not None and len(K_int) > 0:
-        K_int = K_int.copy()
-        K_int[0] = min(K_int[0], float(k_door))
 
     # Коефициенти за тридиагонална матрица
     a = np.zeros(n)   # sub-diagonal
@@ -883,17 +765,8 @@ def turbulent_diffusion(phi: np.ndarray, K: np.ndarray,
         b[i] = 1.0 + r_m + r_p
         c[i] = -r_p
 
-    # ── Долно гранично условие ──
-    if bottom == "neumann":
-        # Нулев поток през самото дъно, но обмен с z[1]:
-        #   dz_full[0]·(phi_new[0]−phi[0])/dt = K_int[0]·(phi_new[1]−phi_new[0])/dz[0]
-        r_p  = K_int[0] * dt / (dz[0] * dz_full[0])
-        b[0] = 1.0 + r_p
-        c[0] = -r_p
-    else:
-        # Историческо (Дирихле под етикет Neumann)
-        b[0] = 1.0;  c[0] = 0.0
-
+    # Гранични условия (Neumann - нулев поток)
+    b[0] = 1.0;  c[0] = 0.0
     a[-1] = 0.0; b[-1] = 1.0
 
     # Thomas алгоритъм
@@ -1056,16 +929,9 @@ class FogModel1D:
         Kh = np.maximum(Kh_tke, K_louis * 0.1)
 
         # 3. Дифузия (T и qv с Kh, ql с Km)
-        # D1: долното гранично условие. При D1_DOOR=0 поведението е
-        # байт-в-байт историческото.
-        _bc   = "neumann" if D1_DOOR else "dirichlet"
-        _door = D1_KH_MAX if D1_DOOR else None
-        T_new  = turbulent_diffusion(T,  Kh, self.rho, self.z, self.dt,
-                                     bottom=_bc, k_door=_door)
-        qv_new = turbulent_diffusion(qv, Kh, self.rho, self.z, self.dt,
-                                     bottom=_bc, k_door=_door)
-        ql_new = turbulent_diffusion(ql, Km, self.rho, self.z, self.dt,
-                                     bottom=_bc, k_door=_door)
+        T_new  = turbulent_diffusion(T,  Kh, self.rho, self.z, self.dt)
+        qv_new = turbulent_diffusion(qv, Kh, self.rho, self.z, self.dt)
+        ql_new = turbulent_diffusion(ql, Km, self.rho, self.z, self.dt)
         ql_new = np.maximum(ql_new, 0.0)
         _d_diff = float(T_new[0]) - _t_in
 
