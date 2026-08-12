@@ -104,6 +104,167 @@ def parse_metar_light(raw, base_date):
     return {"dt": dt, "T": T, "Td": Td, "vis": vis, "fog": fog, "raw": raw.strip()}
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Причина за ниската видимост в НАБЛЮДЕНИЕТО (11.08.2026)
+#
+# Мотив: LBSF_CLDY_2024-01-19 се броеше за HIT, а реалната ниска видимост
+# е от снеговалеж при 16 kt (TEMPO SN BLSN), не от мъгла. Обратно — пет
+# случая се брояха за MISS по същата причина. Правилото "снежните случаи
+# са извън обхвата" съществуваше, но не се прилагаше никъде в кода.
+#
+# Класификацията е ЧИСТО ВЕРИФИКАЦИОННА — не влиза в run_case.py и не
+# променя нито ред физика. Изключените случаи не участват в CSI, но се
+# отчитат отделно като EXCL, за да остане n честно.
+# ──────────────────────────────────────────────────────────────────────────
+
+# Редът има значение: по-специфичните токени първи (FZFG преди FG,
+# BLSN преди SN), иначе краткият се хваща вътре в дългия.
+_WX_FOG   = ("FZFG", "MIFG", "BCFG", "PRFG", "FG")
+_WX_MIST  = ("BR",)
+_WX_SNOW  = ("BLSN", "DRSN", "SHSN", "SNRA", "SG", "PL", "GS", "SN")
+_WX_RAIN  = ("FZDZ", "FZRA", "SHRA", "DZ", "RA")
+
+# Прогнозната част не е наблюдение — TEMPO 0800 FZFG не значи, че
+# в момента има мъгла.
+_WX_TREND_RE = re.compile(r"\b(?:TEMPO|BECMG|NOSIG|PROB\d{2})\b")
+
+
+def classify_obs_wx(raw):
+    """Причина за видимостта в един METAR: FOG/MIST/SNOW/RAIN/MIXED/OTHER."""
+    body = _WX_TREND_RE.split(raw)[0]
+    fog  = any(re.search(r"\b" + t + r"\b", body) for t in _WX_FOG)
+    mist = any(re.search(r"\b" + t + r"\b", body) for t in _WX_MIST)
+    snow = any(re.search(r"[-+]?\b" + t + r"\b", body) for t in _WX_SNOW)
+    rain = any(re.search(r"[-+]?\b" + t + r"\b", body) for t in _WX_RAIN)
+    if (snow or rain) and (fog or mist): return "MIXED"
+    if snow: return "SNOW"
+    if rain: return "RAIN"
+    if fog:  return "FOG"
+    if mist: return "MIST"
+    return "OTHER"
+
+
+def diagnose_obs_cause(obs_list, threshold=None):
+    """
+    Гледа само часовете с наблюдавана видимост под прага и решава коя е
+    доминиращата причина. Праг по подразбиране = EVENT_VIS, тоест същият,
+    по който се определя събитието — иначе бихме изключвали случай заради
+    часове, които не влизат в метриката.
+
+    Връща (excluded: bool, reason: str|None, counts: dict).
+    """
+    thr = EVENT_VIS if threshold is None else threshold
+    counts = {}
+    n = 0
+    for o in obs_list:
+        if o.get("vis") is None or o["vis"] >= thr:
+            continue
+        c = classify_obs_wx(o["raw"])
+        counts[c] = counts.get(c, 0) + 1
+        n += 1
+
+    if n == 0:
+        return False, None, counts
+
+    # Доминиране = поне половината часове с ниска видимост. Прагът е нисък
+    # съзнателно: смесените нощи (сняг + мъгла) остават ВЪТРЕ като MIXED,
+    # защото при тях моделът все пак има какво да улови.
+    if counts.get("SNOW", 0) >= 0.5 * n:
+        return True, "SNOW_DOMINATED", counts
+    if counts.get("SNOW", 0) + counts.get("RAIN", 0) >= 0.5 * n:
+        return True, "PRECIP_DOMINATED", counts
+    return False, None, counts
+
+
+def _selftest_obs_cause():
+    """Приемателни тестове за класификатора. Изпълними ПРЕДИ гейта:
+        python verify_cases.py --selftest
+    Върнатата стойност е кодът за изход (0 = минали)."""
+    tests = [
+        ("METAR LBSF 200700Z 28015KT 1100 R27/1600U -SN BKN008 OVC020 "
+         "M02/M03 Q1019 TEMPO 1500 SN", "SNOW"),
+        ("METAR LBSF 180700Z 30004KT 270V330 0900 R27/1700U FZFG OVC004 "
+         "M04/M05 Q1033 TEMPO 0800 FZFG", "FOG"),
+        ("METAR LBSF 171630Z AUTO VRB02KT 2400 BR OVC002/// M03/M03 "
+         "Q1036 TEMPO 0800 FZFG", "MIST"),
+        ("METAR LBSF 200230Z AUTO 27016KT 9000 -FZDZ FEW010/// M01/M02 "
+         "Q1016 REFZRA TEMPO 2000 SN", "RAIN"),
+        ("METAR LBSF 240800Z 27004KT CAVOK 01/M03 Q1029 NOSIG", "OTHER"),
+        ("METAR LBSF 200300Z AUTO 27019KT 6000 -SN FEW013/// BR M01/M02 "
+         "Q1016 TEMPO 2000 SN", "MIXED"),
+        # TEMPO не е наблюдение: FZFG е само в прогнозната част
+        ("METAR LBSF 171600Z AUTO VRB01KT 2400 BR OVC002/// M03/M03 "
+         "Q1036 TEMPO 0800 FZFG", "MIST"),
+    ]
+    bad = 0
+    print("ТЕСТ 1 — класификация на METAR:")
+    for raw, want in tests:
+        got = classify_obs_wx(raw)
+        if got != want:
+            bad += 1
+            print(f"  ✗ очаквано {want}, получено {got}: {raw[:60]}")
+    print(f"  {len(tests) - bad}/{len(tests)} минали")
+
+    # Тест 2 — цели случаи, ако файловете са налични
+    known = [("LBSF_CLDY_2024-01-19", True,  "SNOW_DOMINATED"),
+             ("LBSF_CLDY_2024-01-23", False, None),
+             ("LBSF_CLDY_2025-01-17", False, None),
+             ("LBPD_CLDY_2025-02-01", False, None)]
+    print("ТЕСТ 2 — цели случаи:")
+    n_run = 0
+    for cid, want_excl, want_reason in known:
+        path = os.path.join(CASES_DIR, cid + ".txt")
+        if not os.path.exists(path):
+            continue
+        n_run += 1
+        try:
+            _, _, _, obs = load_case_file(path)
+        except Exception as e:
+            bad += 1
+            print(f"  ✗ {cid}: {e}")
+            continue
+        excl, reason, _ = diagnose_obs_cause(obs)
+        if excl != want_excl or reason != want_reason:
+            bad += 1
+            print(f"  ✗ {cid}: очаквано ({want_excl}, {want_reason}), "
+                  f"получено ({excl}, {reason})")
+    print(f"  {n_run} проверени, {'без разминавания' if not bad else 'ИМА РАЗМИНАВАНИЯ'}")
+
+    # Тест 3 — гейтът различава ИЗКЛЮЧЕН от ЛИПСВАЩ.
+    # Първата версия на кръпката ги смесваше: изключените изпадаха от
+    # cur и гейтът вдигаше фалшива тревога "провери cases/".
+    print("ТЕСТ 3 — гейт: изключен ≠ липсващ:")
+    _res = [
+        {"case_id": "X_CLDY_2024-01-19", "icao": "X", "category": "CLDY",
+         "excluded": True, "excluded_reason": "SNOW_DOMINATED",
+         "eval": {"event": "HIT", "T": {"MAE": 1.2},
+                  "hourly": {"CSI": 0.5}}},
+        {"case_id": "X_CFOG_2024-01-10", "icao": "X", "category": "CFOG",
+         "excluded": False, "excluded_reason": None,
+         "eval": {"event": "HIT", "T": {"MAE": 1.0},
+                  "hourly": {"CSI": 0.6}}},
+    ]
+    _base = {"X-v1": {"cases": {
+        "X_CLDY_2024-01-19": {"event": "HIT", "T_MAE": 1.2},
+        "X_CFOG_2024-01-10": {"event": "HIT", "T_MAE": 1.0},
+        "X_CDRY_2099-01-01": {"event": "CN", "T_MAE": 1.0}}}}
+    _r, _m, _e, _x = check_regressions(_res, _base)
+    if _m != ["X-v1: X_CDRY_2099-01-01"]:
+        bad += 1
+        print(f"  ✗ липсващи: очаквано 1 непознат случай, получено {_m}")
+    if _x != ["X-v1: X_CLDY_2024-01-19"]:
+        bad += 1
+        print(f"  ✗ изключени: очаквано 1, получено {_x}")
+    if _r:
+        bad += 1
+        print(f"  ✗ фалшиви регресии: {_r}")
+    print("  разделянето работи" if not _r and
+          _m == ["X-v1: X_CDRY_2099-01-01"] else "  ПРОБЛЕМ")
+
+    print("\nСАМОТЕСТ:", "ПРЕМИНАТ ✓" if bad == 0 else f"ПАДНАЛ ✗ ({bad})")
+    return 0 if bad == 0 else 1
+
+
 def load_case_file(path):
     """Чете файл от cases/ → (icao, category, date_str, [obs...])."""
     name = os.path.splitext(os.path.basename(path))[0]
@@ -552,7 +713,13 @@ def check_regressions(results, baselines, strict_missing=True):
     очаквана и не е дефект.
     """
     regs, missing = [], []
-    cur = {r["case_id"]: r for r in results if "error" not in r}
+    # Изключените (валежни) случаи не се съдят срещу базата: техният
+    # изход не е физически заслужен в нито едната посока. НО те СЕ
+    # ИЗПЪЛНИХА — не са липсващи. Държим ги в отделно множество, за да
+    # не вдига гейтът фалшива тревога "провери cases/".
+    cur = {r["case_id"]: r for r in results
+           if "error" not in r and not r.get("excluded")}
+    excluded_ids = {r["case_id"] for r in results if r.get("excluded")}
     ran_icaos = {r["icao"] for r in results}
     # Случаи, които СЕ ИЗПЪЛНИХА и паднаха. Не са "липсващи" — те са
     # провал. Старият код ги изключваше от cur и гейтът обявяваше
@@ -560,11 +727,16 @@ def check_regressions(results, baselines, strict_missing=True):
     # verify_cases внасяше rh_crit_for от върнат run_case → нула
     # изпълнени случая → зелена присъда).
     errored = sorted(r["case_id"] for r in results if "error" in r)
+    excl_in_base = []
     for bname, base in baselines.items():
         for cid, b in base.get("cases", {}).items():
             r = cur.get(cid)
             if r is None:
-                if strict_missing and cid.split("_")[0] in ran_icaos:
+                if cid in excluded_ids:
+                    # Изпълни се, но е изключен като валежен. Това е
+                    # съзнателно решение, не липса.
+                    excl_in_base.append(f"{bname}: {cid}")
+                elif strict_missing and cid.split("_")[0] in ran_icaos:
                     missing.append(f"{bname}: {cid}")
                 continue
             # 1) събитийно влошаване
@@ -575,14 +747,15 @@ def check_regressions(results, baselines, strict_missing=True):
             bt, rt = b.get("T_MAE"), r["eval"]["T"]["MAE"]
             if bt is not None and rt is not None and rt > bt + 0.7:
                 regs.append(f"{bname}: {cid}  MAE_T {bt:.2f} → {rt:.2f}")
-    return regs, sorted(set(missing)), errored
+    return (regs, sorted(set(missing)), errored,
+            sorted(set(excl_in_base)))
 
 
 def save_baseline(name, results):
     os.makedirs(BASELINE_DIR, exist_ok=True)
     cases = {}
     for r in results:
-        if "error" in r:
+        if "error" in r or r.get("excluded"):
             continue
         cases[r["case_id"]] = {"event": r["eval"]["event"],
                                "T_MAE": r["eval"]["T"]["MAE"],
@@ -603,7 +776,7 @@ def stage_report(results):
     lines = []
     by_ap = {}
     for r in results:
-        if "error" in r:
+        if "error" in r or r.get("excluded"):
             continue
         by_ap.setdefault(r["icao"], []).append(r)
 
@@ -661,24 +834,44 @@ def stage_report(results):
 
 
 def matrix_report(results):
-    lines = [f"\n{'':6}" + "".join(f"{c:>18}" for c in CATEGORIES)]
+    lines = [f"\n{'':6}" + "".join(f"{c:>20}" for c in CATEGORIES)]
     by = {}
     for r in results:
         if "error" in r:
             continue
-        by.setdefault(r["icao"], {}).setdefault(r["category"], []).append(
-            r["eval"]["event"])
+        # Изключените се броят отделно като E — не влизат в H/M/F/C.
+        tag = "EXCL" if r.get("excluded") else r["eval"]["event"]
+        by.setdefault(r["icao"], {}).setdefault(r["category"], []).append(tag)
     for icao in sorted(by):
         row = f"{icao:6}"
         for c in CATEGORIES:
             evs = by[icao].get(c, [])
             if not evs:
-                row += f"{'—':>18}"
+                row += f"{'—':>20}"
             else:
                 s = f"H{evs.count('HIT')}/M{evs.count('MISS')}" \
                     f"/F{evs.count('FA')}/C{evs.count('CN')}"
-                row += f"{s:>18}"
+                n_ex = evs.count("EXCL")
+                if n_ex:
+                    s += f"/E{n_ex}"
+                row += f"{s:>20}"
         lines.append(row)
+    return "\n".join(lines)
+
+
+def excluded_report(results):
+    """Кои случаи са изключени и защо."""
+    ex = [r for r in results if r.get("excluded")]
+    if not ex:
+        return "  Няма изключени случаи."
+    lines = [f"  {len(ex)} случая, изключени от метриката "
+             f"(ниската видимост в наблюдението не е от мъгла):"]
+    for r in sorted(ex, key=lambda x: x["case_id"]):
+        causes = ", ".join(f"{k}={v}" for k, v in
+                           sorted(r.get("obs_vis_cause", {}).items(),
+                                  key=lambda kv: -kv[1]))
+        lines.append(f"    {r['case_id']:<28} {r['excluded_reason']:<18} "
+                     f"({causes})   [щеше да е {r['eval']['event']}]")
     return "\n".join(lines)
 
 
@@ -695,7 +888,13 @@ def main():
                     help="Приеми текущия резултат като база (пр. LBSF-stage1)")
     ap.add_argument("--all-baselines", action="store_true",
                     help="Сравнявай и с архивните бази (старо поведение)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="Приемателни тестове за класификатора на "
+                         "валежните случаи; нула пускания на модела")
     args = ap.parse_args()
+
+    if args.selftest:
+        sys.exit(_selftest_obs_cause())
 
     files = sorted(glob.glob(os.path.join(args.cases_dir, "LB??_*_*.txt")))
     cases = []
@@ -731,24 +930,52 @@ def main():
             print(f"{ev['event']:4}  MAE_T="
                   f"{ev['T']['MAE'] if ev['T']['MAE'] is not None else float('nan'):.1f}°C  "
                   f"minVIS={ev['mod_min_vis']:.0f}m  ({time.time()-t0:.0f}s)")
+            excl, reason, causes = diagnose_obs_cause(obs)
+            if excl:
+                print(f"      [EXCL] {reason} — ниската видимост в "
+                      f"наблюдението е от валеж, не от мъгла")
             results.append({"case_id": cid, "icao": icao, "category": cat,
                             "date": date_str, "eval": ev,
-                            "regime_log": regime_log})
+                            "regime_log": regime_log,
+                            "excluded": excl,
+                            "excluded_reason": reason,
+                            "obs_vis_cause": causes})
         except Exception as e:
             print(f"ГРЕШКА: {e}")
             results.append({"case_id": cid, "icao": icao, "category": cat,
                             "date": date_str, "error": str(e)})
 
     # Регресии срещу приетите бази
-    regs, missing, errored = check_regressions(
+    regs, missing, errored, excl_in_base = check_regressions(
         results, baselines,
         strict_missing=not (args.category or args.date))
     n_ok = sum(1 for r in results if "error" not in r)
+    n_excl = sum(1 for r in results if r.get("excluded"))
+    scored = [r for r in results
+              if "error" not in r and not r.get("excluded")]
 
     # Отчет
     print("\n" + "=" * 64)
-    print("МАТРИЦА летище × категория (събитийно H/M/F/C):")
+    print("МАТРИЦА летище × категория (събитийно H/M/F/C, E=изключени):")
     print(matrix_report(results))
+
+    # Агрегат — САМО върху оценяваните случаи
+    _h = sum(r["eval"]["event"] == "HIT"  for r in scored)
+    _m = sum(r["eval"]["event"] == "MISS" for r in scored)
+    _f = sum(r["eval"]["event"] == "FA"   for r in scored)
+    _c = sum(r["eval"]["event"] == "CN"   for r in scored)
+    _csi = _h / (_h + _m + _f) if (_h + _m + _f) else float("nan")
+    _maes = [r["eval"]["T"]["MAE"] for r in scored
+             if r["eval"]["T"]["MAE"] is not None]
+    print(f"\nОБЩО (оценявани): HIT={_h} MISS={_m} FA={_f} CN={_c}   "
+          f"CSI={_csi:.3f}   "
+          f"MAE_T={np.mean(_maes):.3f} °C   {len(scored)} случая")
+    if n_excl:
+        print(f"       + {n_excl} изключени (валеж) — не участват в CSI")
+
+    print("\nИЗКЛЮЧЕНИ СЛУЧАИ:")
+    print(excluded_report(results))
+
     print("\nОЦЕНКА ПО ЕТАПИ:")
     print(stage_report(results))
     if baselines:
@@ -756,6 +983,13 @@ def main():
         if archived:
             print(f"[Гейт] Архивни (пропуснати): "
                   f"{', '.join(sorted(archived))}")
+    if excl_in_base:
+        print(f"\n[Гейт] {len(excl_in_base)} случая от базите са изключени "
+              f"като валежни — не се съдят:")
+        for c in excl_in_base:
+            print("  ○ " + c)
+        print("  → базите ще ги изпуснат при следващото --accept. Това е "
+              "очаквано.")
     if missing:
         print("\n" + "!" * 64)
         print("ЛИПСВАЩИ СЛУЧАИ — в базата са, но не се изпълниха:")
@@ -795,8 +1029,10 @@ def main():
     out = {"run_utc": stamp, "config": config_snapshot(),
            "results": results, "regressions": regs,
            "missing_cases": missing,
+           "excluded_in_baseline": excl_in_base,
            "errored_cases": errored,
            "n_evaluated": n_ok,
+           "n_excluded": n_excl,
            "baselines_active": sorted(baselines),
            "baselines_archived": sorted(archived)}
     jpath = os.path.join(LOGS_DIR, f"verify_{stamp}.json")
