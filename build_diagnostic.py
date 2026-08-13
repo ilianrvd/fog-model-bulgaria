@@ -218,6 +218,14 @@ def build_record(res: dict, cases_dir: str, cache_dir: str) -> dict:
 
     # ── Видимост ──
     record["vis_min_mod"]  = ev.get("mod_min_vis")
+
+    # ── Почасови редици (ФАЗА А, 13.08.2026) ──
+    # Пренасят се дословно от verify JSON. Нула преизчисляване тук —
+    # този файл само пренарежда.
+    record["series_mod"]     = res.get("series_mod", [])
+    record["series_obs"]     = res.get("series_obs", [])
+    record["vis_min_obs"]    = res.get("vis_min_obs")
+    record["vis_min_obs_at"] = res.get("vis_min_obs_at")
     record["fog_hours_mod"] = ev.get("hourly", {}).get("fa", 0) + \
                               ev.get("hourly", {}).get("hits", 0)
     record["fog_hours_obs"] = ev.get("hourly", {}).get("misses", 0) + \
@@ -296,6 +304,16 @@ def main():
     results = verify_data["results"]
     print(f"[INFO] Заредени {len(results)} случая от {args.verify}")
 
+    # Среда на пуска (D1_DOOR, D2_SOIL, ..., git тагът) — пренася се
+    # ДОСЛОВНО от verify_*.json (config.env, записан от verify_cases.py
+    # при самия пуск на модела). Не се преизчислява тук: build_diagnostic
+    # само пренарежда резултатите, той не пуска модела.
+    run_env = (verify_data.get("config") or {}).get("env", {})
+    if not run_env:
+        print("[ВНИМАНИЕ] verify JSON-ът няма config.env — вероятно е "
+              "произведен от verify_cases.py отпреди тази поправка. "
+              "Средата на пуска ще липсва в diagnostic_summary.json.")
+
     # Строим диагностичните записи
     records = []
     missing_cache  = 0
@@ -303,6 +321,11 @@ def main():
 
     for i, res in enumerate(results):
         rec = build_record(res, args.cases, args.cache)
+        # Средата е обща за целия пуск, не за отделния случай — записва
+        # се дословно във всеки запис, за да остане списъчната
+        # структура на diagnostic_summary.json непроменена (нула
+        # промяна за консуматорите, които четат файла като списък).
+        rec["env"] = run_env
         records.append(rec)
 
         if not rec["wind_metar"]:

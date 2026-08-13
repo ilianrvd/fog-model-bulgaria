@@ -33,6 +33,7 @@ import sys, os, re, json, glob, time, argparse, hashlib
 import numpy as np
 from datetime import datetime, timedelta, timezone
 import pairing
+from fog_model import Rd as _FM_RD
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -49,6 +50,8 @@ FORECAST_H    = 15      # хоризонт, покрива нощта до 09 UT
 
 EVENT_VIS     = 2000.0  # праг на събитийната метрика [m]
 HOURLY_VIS    = 1000.0  # праг на часовата (диагностична) метрика [m]
+NEAR_VIS_M    = 5000.0  # праг за категория NEAR при MISS — чисто докладване,
+                        # не влиза в HIT/MISS/FA/CN и не пипа CSI
 
 # Праговете за епизоди, карантината и сдвояването живеят в pairing.py —
 # единствен източник за трите места, които сравняват модел с METAR.
@@ -261,6 +264,60 @@ def _selftest_obs_cause():
     print("  разделянето работи" if not _r and
           _m == ["X-v1: X_CDRY_2099-01-01"] else "  ПРОБЛЕМ")
 
+
+    # Тест 4 — сериализацията на редиците (ФАЗА А). Нула модел-рана:
+    # проверява прозореца, прага за fog_top и формулата за LWP срещу
+    # ръчно смятан пример.
+    print("ТЕСТ 4 — редици (ФАЗА А):")
+
+    class _FakeModel:
+        p = np.array([100000.0, 99900.0, 99800.0])
+
+    _z = np.array([0.5, 10.0, 50.0])
+    def _rec(th, T0, ql):
+        return {"time_h": th, "hour_utc": (18 + th) % 24, "z": _z,
+                "T": np.array([T0, T0 - 0.5, T0 - 1.0]),
+                "ql": np.array(ql), "T_sfc": T0,
+                "rh_sfc": 0.995, "vis_sfc": 1234.5}
+    _hist = [_rec(0, 280.0, [0.0, 0.0, 0.0]),          # 18 UTC, без мъгла
+             _rec(0.5, 279.5, [1e-4, 0.0, 0.0]),        # 18:30 — не е кръгъл час
+             _rec(12, 275.0, [1e-4, 1e-5, 0.0]),        # 06 UTC, мъгла до 10 m
+             _rec(14, 278.0, [1e-4, 0.0, 0.0])]         # 08 UTC — извън прозореца
+    _ser = build_model_series(_FakeModel(), _hist, 18, "2024-01-15")
+    if [e["hour_utc"] for e in _ser] != [18, 6]:
+        bad += 1
+        print(f"  ✗ прозорец: очаквано [18, 6], получено "
+              f"{[e['hour_utc'] for e in _ser]}")
+    if _ser and _ser[0]["fog_top_m"] != 0.0:
+        bad += 1
+        print(f"  ✗ fog_top без мъгла: очаквано 0.0, получено {_ser[0]['fog_top_m']}")
+    if len(_ser) > 1 and abs(_ser[1]["fog_top_m"] - 10.0) > 1e-9:
+        bad += 1
+        print(f"  ✗ fog_top: очаквано 10.0, получено {_ser[1]['fog_top_m']}")
+    # ql=1e-5 kg/kg е 0.01 g/kg > 0.005 → нивото се брои; 1e-6 не би се броило
+    if len(_ser) > 1:
+        _want = float(np.sum(np.array([1e-4, 1e-5, 0.0]) *
+                     (_FakeModel.p / (_FM_RD * np.array([275.0, 274.5, 274.0]))) *
+                     np.gradient(_z)))
+        if abs(_ser[1]["lwp_kg_m2"] - round(_want, 8)) > 1e-9:
+            bad += 1
+            print(f"  ✗ LWP: очаквано {_want:.8f}, получено {_ser[1]['lwp_kg_m2']}")
+    if len(_ser) > 1 and abs(_ser[1]["T_mod_0"] - (275.0 - 273.15)) > 1e-9:
+        bad += 1
+        print(f"  ✗ T_mod_0: получено {_ser[1]['T_mod_0']}")
+
+    _obs = [{"dt": datetime(2024, 1, 15, 18, 0, tzinfo=timezone.utc),
+             "T": 3.0, "vis": 10000.0},
+            {"dt": datetime(2024, 1, 16, 2, 30, tzinfo=timezone.utc),
+             "T": -1.0, "vis": 600.0},
+            {"dt": datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc),
+             "T": 0.0, "vis": 300.0}]      # извън прозореца
+    _os, _vmin, _at = build_obs_series(_obs, 18, "2024-01-15")
+    if len(_os) != 2 or _vmin != 600.0 or _at != {"hour_utc": 2, "minute": 30}:
+        bad += 1
+        print(f"  ✗ obs редица: n={len(_os)} vmin={_vmin} at={_at}")
+    print("  проверени: прозорец, fog_top, LWP, T, vis_min_obs")
+
     print("\nСАМОТЕСТ:", "ПРЕМИНАТ ✓" if bad == 0 else f"ПАДНАЛ ✗ ({bad})")
     return 0 if bad == 0 else 1
 
@@ -332,7 +389,7 @@ def fetch_icon_cached(icao, date_str, hour, forecast_hours):
 # ──────────────────────────────────────────────────────────────────────────
 # Един рун на модела (интеграционната логика от batch_test.py, вход локален)
 # ──────────────────────────────────────────────────────────────────────────
-def run_model(icao, date_str, hour, obs_list):
+def run_model(icao, date_str, hour, obs_list, return_series=False):
     from run_case import (build_surface_layer, diagnose_regime,
                           apply_nudging, AIRPORT_CONFIG)
     try:
@@ -515,6 +572,12 @@ def run_model(icao, date_str, hour, obs_list):
         if step % steps_out == 0:
             model.diagnose()
 
+    # ФАЗА А: редицата се строи СЛЕД края на интеграцията, само чрез
+    # четене на history. Сигнатурата остава обратно съвместима —
+    # старите консуматори (batch_test и др.) получават две стойности.
+    if return_series:
+        return (model.history, regime_log,
+                build_model_series(model, model.history, hour, date_str))
     return model.history, regime_log
 
 
@@ -549,6 +612,90 @@ def _pairs(history, obs_list, hour, date_str):
     ot = [o["dt"] for o in obs_list]
     return [(mt[j], history[j], obs_list[i])
             for i, j, _ in pairing.pair_obs_to_model(ot, mt)]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Сериализация на почасовите редици (ФАЗА А, 13.08.2026)
+#
+# Мотив: `history` не се записваше никъде. Всяко температурно сканиране
+# изискваше нов модел-ран. Тук се СНИМА само вече изчисленото състояние —
+# нула нови изчисления във физическия път, нула промени в изхода на случай.
+#
+# Прозорец: кръгли часове 18–06 UTC (стартът е 18, хоризонтът стига до 09;
+# часовете след 06 не влизат съзнателно).
+# ──────────────────────────────────────────────────────────────────────────
+SERIES_H_AFTER_START = 12          # 18 UTC + 12 h = 06 UTC, включително
+FOG_LWC_G_KG         = 0.005       # ДОСЛОВНО прагът в lwc_to_visibility
+
+
+def _series_window(hour, date_str):
+    """(t0, t_end) на прозореца за редиците."""
+    t0 = datetime.strptime(date_str, "%Y-%m-%d").replace(
+        hour=hour, tzinfo=timezone.utc)
+    return t0, t0 + timedelta(hours=SERIES_H_AFTER_START, minutes=59)
+
+
+def _fog_top_m(z, ql):
+    """Най-високото ниво с LWC над прага за мъгла [m]; 0.0 при липса.
+
+    Прагът е същият, по който lwc_to_visibility обявява „ясно" —
+    друг праг би дал дълбочина, несъвместима с обявената видимост."""
+    idx = [i for i in range(len(z)) if float(ql[i]) * 1000.0 > FOG_LWC_G_KG]
+    return float(z[idx[-1]]) if idx else 0.0
+
+
+def _lwp_kg_m2(z, p_col, T_col, ql):
+    """Интегрирана течна вода [kg/m²].
+
+    ДОСЛОВНО формулата от fog_model.step (lwp_col_seb):
+        Σ ql · rho · ∇z,  rho = p/(Rd·T)
+    `p` е константна по време (хидростатична), `T` е от самия запис."""
+    rho = np.asarray(p_col) / (_FM_RD * np.asarray(T_col))
+    return float(np.sum(np.asarray(ql) * rho * np.gradient(np.asarray(z))))
+
+
+def build_model_series(model, history, hour, date_str):
+    """Почасова моделна редица 18–06 UTC. Само четене от history."""
+    mt = _model_times(history, hour, date_str)
+    t0, t_end = _series_window(hour, date_str)
+    out = []
+    for t, h in zip(mt, history):
+        if t.minute != 0 or not (t0 <= t <= t_end):
+            continue
+        ql = h["ql"]
+        out.append({
+            "hour_utc"  : int(t.hour),
+            "T_mod_0"   : round(float(h["T_sfc"]) - 273.15, 3),
+            "RH_mod_0"  : round(float(h["rh_sfc"]) * 100.0, 2),
+            "vis_mod"   : round(float(h["vis_sfc"]), 1),
+            "fog_top_m" : round(_fog_top_m(h["z"], ql), 3),
+            "lwp_kg_m2" : round(_lwp_kg_m2(h["z"], model.p, h["T"], ql), 8),
+        })
+    return out
+
+
+def build_obs_series(obs_list, hour, date_str):
+    """Наблюдавана редица 18–06 UTC + минимумът на видимостта.
+
+    Парсингът е вече свършен от parse_metar_light при зареждане на случая —
+    втори парсер няма и не трябва да има.
+
+    Връща (редица, vis_min_obs, {"hour_utc", "minute"} на минимума).
+    """
+    t0, t_end = _series_window(hour, date_str)
+    out = []
+    for o in obs_list:
+        t = o["dt"]
+        if not (t0 <= t <= t_end):
+            continue
+        out.append({"hour_utc": int(t.hour), "minute": int(t.minute),
+                    "T_obs": o["T"], "vis_obs": o["vis"]})
+    with_vis = [e for e in out if e["vis_obs"] is not None]
+    if with_vis:
+        best = min(with_vis, key=lambda e: e["vis_obs"])
+        return out, float(best["vis_obs"]), {"hour_utc": best["hour_utc"],
+                                             "minute": best["minute"]}
+    return out, None, None
 
 
 def evaluate(history, obs_list, hour, date_str):
@@ -619,6 +766,14 @@ def evaluate(history, obs_list, hour, date_str):
     else:
         event, onset_dt = "CN", None
 
+    mod_min_vis = float(min(h["vis_sfc"] for h in history))
+
+    # NEAR — чисто докладване. Не влиза в HIT/MISS/FA/CN, не пипа CSI.
+    # Вярно само при MISS, когато моделът все пак е дал сигнал под
+    # NEAR_VIS_M (5000 m) през нощта — различава "сляп" пропуск от
+    # пропуск с реален, но твърде слаб/кратък сигнал.
+    near = bool(event == "MISS" and mod_min_vis < NEAR_VIS_M)
+
     return {
         "event"      : event,
         "onset_dt_h" : onset_dt,          # модел − обс, часове (за HIT)
@@ -628,13 +783,36 @@ def evaluate(history, obs_list, hour, date_str):
         "T"          : {"MAE": float(np.mean(mae_t)) if mae_t else None,
                         "Tmin_err": t_min_err,
                         "err_0306": float(np.mean(err_0306)) if err_0306 else None},
-        "mod_min_vis": float(min(h["vis_sfc"] for h in history)),
+        "mod_min_vis": mod_min_vis,
+        "near"       : near,
     }
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # Снимка на конфигурацията (за да помни всеки JSON с какви настройки е пуснат)
 # ──────────────────────────────────────────────────────────────────────────
+def env_snapshot():
+    """
+    Записва средата на пуска: гейт-флаговете и git тага. Чисто
+    докладване — никога не хвърля изключение, за да не спре оперативния
+    път при липсващ git или непоставена променлива.
+    """
+    snap = {
+        "D1_DOOR"            : os.environ.get("D1_DOOR", ""),
+        "D2_SOIL"             : os.environ.get("D2_SOIL", ""),
+        "D2_SOIL_MAX_KHR"     : os.environ.get("D2_SOIL_MAX_KHR", ""),
+        "D_SOIL_G_OVERRIDE"   : os.environ.get("D_SOIL_G_OVERRIDE", ""),
+    }
+    try:
+        import subprocess
+        r = subprocess.run(["git", "describe", "--tags"],
+                            capture_output=True, text=True, timeout=5)
+        snap["git_describe"] = r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        snap["git_describe"] = ""
+    return snap
+
+
 def config_snapshot():
     snap = {}
     try:
@@ -650,6 +828,7 @@ def config_snapshot():
         snap["AIRPORT_CONFIG"] = run_case.AIRPORT_CONFIG
     except Exception as e:
         snap["error"] = str(e)
+    snap["env"] = env_snapshot()
     return snap
 
 
@@ -766,6 +945,37 @@ def save_baseline(name, results):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     print(f"[БАЗА] Приета: {path}  ({len(cases)} случая)")
+
+    # ── baseline.json — единствен източник на истина за реперните
+    # числа на оперативната страница (docs/index.html). Писан САМО тук,
+    # при приемане на репер — run_operational.py само чете, никога не
+    # преизчислява. Предотвратява преписване на ръка на няколко места
+    # (стана точно това с 0.359 vs 0.4019 по-рано в проекта).
+    ev_evaluated = [r for r in results if "error" not in r
+                    and not r.get("excluded")]
+    n_excl = sum(1 for r in results if r.get("excluded"))
+    h = sum(1 for r in ev_evaluated if r["eval"]["event"] == "HIT")
+    m = sum(1 for r in ev_evaluated if r["eval"]["event"] == "MISS")
+    f_ = sum(1 for r in ev_evaluated if r["eval"]["event"] == "FA")
+    csi = h / (h + m + f_) if (h + m + f_) else None
+    maes = [r["eval"]["T"]["MAE"] for r in ev_evaluated
+            if r["eval"]["T"]["MAE"] is not None]
+    mae_t = (sum(maes) / len(maes)) if maes else None
+    dates = sorted(r["date"] for r in ev_evaluated if r.get("date"))
+    period = f"{dates[0][:7]} — {dates[-1][:7]}" if dates else None
+    baseline = {
+        "tag": name,
+        "csi": round(csi, 4) if csi is not None else None,
+        "mae_t": round(mae_t, 3) if mae_t is not None else None,
+        "n_evaluated": len(ev_evaluated),
+        "n_excluded": n_excl,
+        "period": period,
+        "accepted_utc": payload["accepted_utc"],
+    }
+    with open("baseline.json", "w", encoding="utf-8") as f:
+        json.dump(baseline, f, ensure_ascii=False, indent=2)
+    print(f"[БАЗА] baseline.json обновен: CSI={baseline['csi']} "
+          f"MAE_T={baseline['mae_t']} n={baseline['n_evaluated']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -925,8 +1135,11 @@ def main():
         print(f"[{i}/{len(cases)}] {cid} ...", end=" ", flush=True)
         try:
             t0 = time.time()
-            history, regime_log = run_model(icao, date_str, args.hour, obs)
+            history, regime_log, mod_series = run_model(
+                icao, date_str, args.hour, obs, return_series=True)
             ev = evaluate(history, obs, args.hour, date_str)
+            obs_series, vis_min_obs, vis_min_obs_at = build_obs_series(
+                obs, args.hour, date_str)
             print(f"{ev['event']:4}  MAE_T="
                   f"{ev['T']['MAE'] if ev['T']['MAE'] is not None else float('nan'):.1f}°C  "
                   f"minVIS={ev['mod_min_vis']:.0f}m  ({time.time()-t0:.0f}s)")
@@ -939,7 +1152,11 @@ def main():
                             "regime_log": regime_log,
                             "excluded": excl,
                             "excluded_reason": reason,
-                            "obs_vis_cause": causes})
+                            "obs_vis_cause": causes,
+                            "series_mod": mod_series,
+                            "series_obs": obs_series,
+                            "vis_min_obs": vis_min_obs,
+                            "vis_min_obs_at": vis_min_obs_at})
         except Exception as e:
             print(f"ГРЕШКА: {e}")
             results.append({"case_id": cid, "icao": icao, "category": cat,

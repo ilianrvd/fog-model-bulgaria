@@ -38,6 +38,66 @@ CAT_BG = {
     "VFR":  "#003a00",
 }
 
+COASTAL_ICAO = {"LBWN", "LBBG"}
+
+# ── Съобщения — текстове ОДОБРЕНИ И ФИКСИРАНИ (сесия по разработка на
+# страницата). Не се преформулират тук; промяна на текста минава през
+# отделно решение, не през код.
+MSG_DYNAMIC = "Динамичен режим. За модела мъглата не е вероятна."
+MSG_RADIATIVE_FOG = (
+    "Тиха ясна нощ. Сигналът за влажност е верен, но намалението на "
+    "видимостта може да е надценено. Възможна е димка или мъгла встрани "
+    "от летището. При прогнозирана мъгла минималната температура "
+    "вероятно е подценена с около 2 K.")
+MSG_HIGH_RH_UNRELIABLE = (
+    "При висока вечерна влажност прогнозата за ясно е по-ненадеждна "
+    "от обичайното.")
+# Съобщение (б) — само LBSF/LBPD (котловинен ефект, известен от
+# верификацията). LBGO/LBWN/LBBG нямат тази специфика.
+MSG_B_AIRPORTS = {"LBSF", "LBPD"}
+
+PERM_MSG = {
+    "LBGO": ("Най-добрата обща прогноза в набора. Прогнозата за ясно "
+             "тук е по-слаба, отколкото на другите станции."),
+    "LBWN": ("Зимните случаи са надеждни. Летните морски мъгли не са "
+             "изследвани — механизмът е неизвестен."),
+    "LBBG": ("Нула мъглени случая в набора. Моделът не е оценяван по "
+             "основната си задача на тази станция."),
+}
+
+
+def _rh_threshold():
+    """Прагът за 'висока вечерна влажност' — от reliability.json, ако
+    е наличен, иначе 0.95 по подразбиране. Един източник на истина."""
+    try:
+        import reliability
+        cal = reliability.load()
+        if cal and cal.get("threshold"):
+            return float(cal["threshold"])
+    except Exception:
+        pass
+    return 0.95
+
+
+def build_message(icao, regime_start, forecast_fog, rh_early):
+    """
+    Условно съобщение — по едно на прогноза, взаимно изключващи се.
+    Живото NEAR НЕ участва тук — отпаднало изцяло (измерено и
+    затворено: 18.2%, p=0.273, сигналът е несъществен извън LBGO).
+    """
+    if regime_start == "dynamic":
+        return MSG_DYNAMIC
+    if (regime_start == "radiative" and forecast_fog
+            and icao in MSG_B_AIRPORTS):
+        return MSG_RADIATIVE_FOG
+    if (regime_start == "radiative" and not forecast_fog
+            and icao not in COASTAL_ICAO
+            and rh_early is not None and rh_early > _rh_threshold()):
+        return MSG_HIGH_RH_UNRELIABLE
+    return None
+
+
+
 # Кеш за ICON профилите — зареждаме всички с 1 заявка
 _ICON_PROFILES_CACHE = {}
 
@@ -213,23 +273,47 @@ def main():
             hours_utc = [r["hour_utc"] for r in history]
             vis_list  = [r["vis_sfc"] for r in history]
             T_list    = [round(r["T_sfc"] - 273.15, 1) for r in history]
+            # RH почасово, успоредно на T — данните вече се пресмятат
+            # във всяка model.diagnose() стъпка (fog_model.py), тук само
+            # се извличат. Нула нова физика.
+            RH_list   = [round(r["rh_sfc"] * 100.0, 0) for r in history]
 
             if   min_vis < 200:  rating = "LIFR"
             elif min_vis < 600:  rating = "IFR"
             elif min_vis < 1000: rating = "MVFR"
             else:                rating = "VFR"
 
+            # forecast_fog — СЪЩИЯТ критерий, който вече ползва живият
+            # флаг за надеждност в run_case.py (min_vis < 1000). Не е
+            # епизодният критерий от verify_cases.py (EVENT_VIS=2000 +
+            # продължителност) — различен по дизайн, известно от тази
+            # сесия, извън обхвата на текущата поправка.
+            forecast_fog = min_vis < 1000.0
+
+            rh_early = None
+            try:
+                import reliability
+                rh_early = reliability.rh_early_max_from_history(history)
+            except Exception:
+                pass
+
+            message = build_message(icao, regime, forecast_fog, rh_early)
+
             results[icao] = {
-                "name"     : AIRPORT_COORDS[icao]["name"],
-                "min_vis"  : int(min_vis),
-                "min_t_utc": float(min_t),
-                "fog_hours": fog_h,
-                "rating"   : rating,
-                "regime"   : regime,
-                "cats"     : cats,
-                "hours_utc": hours_utc,
-                "vis"      : vis_list,
-                "T"        : T_list,
+                "name"        : AIRPORT_COORDS[icao]["name"],
+                "min_vis"     : int(min_vis),
+                "min_t_utc"   : float(min_t),
+                "fog_hours"   : fog_h,
+                "rating"      : rating,
+                "regime"      : regime,          # режимът при старт (18 UTC)
+                "cats"        : cats,
+                "hours_utc"   : hours_utc,
+                "vis"         : vis_list,
+                "T"           : T_list,
+                "RH"          : RH_list,
+                "forecast_fog": forecast_fog,
+                "rh_early_max": rh_early,
+                "message"     : message,
             }
             print(f"  Мин.VIS={min_vis:.0f}m  {rating}  Режим={regime}")
         except Exception as e:
@@ -243,6 +327,19 @@ def main():
     with open("results/latest.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     print("\n[OK] results/latest.json записан")
+
+    # Реперните числа — от baseline.json, писан от verify_cases.py при
+    # save_baseline(). Никога не се преизчисляват тук. Ако файлът
+    # липсва, страницата казва "репер неизвестен" вместо да пази старо
+    # число (урок от 0.359 vs 0.4019, преписвани на няколко места).
+    baseline = None
+    try:
+        with open("baseline.json", encoding="utf-8") as f:
+            baseline = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        print("[ВНИМАНИЕ] baseline.json липсва или е повреден — "
+              "страницата ще покаже 'репер неизвестен'")
+    payload["baseline"] = baseline
 
     # Генериране на HTML
     os.makedirs("docs", exist_ok=True)
@@ -282,10 +379,15 @@ def build_html(payload):
             c = CAT_COLOR.get(cat, "#aaa")
             timeline += f'<span style="color:{c};font-family:monospace">{SYM[cat]}</span>'
 
+        # Постоянен ред по станция — малък, сив, до името. Само за
+        # LBGO/LBWN/LBBG. Винаги видим, не е предупреждение.
+        perm = PERM_MSG.get(icao)
+        perm_html = (f'<div class="perm-note">{perm}</div>' if perm else "")
+
         rows += f"""
             <tr style="background:{bg}22">
               <td><b>{icao}</b></td>
-              <td>{d['name']}</td>
+              <td>{d['name']}{perm_html}</td>
               <td style="color:{color};font-weight:bold">{rating}</td>
               <td>{min_vis} m</td>
               <td>{fog_h}h</td>
@@ -293,27 +395,55 @@ def build_html(payload):
               <td style="letter-spacing:2px;font-size:14px">{timeline}</td>
             </tr>"""
 
+        # Условно съобщение — веднага под реда му в детайлния блок,
+        # не в обобщената таблица (там няма място за пълен текст).
+
+
     # Детайлна таблица по часове
     detail = ""
     for icao, d in airports.items():
         if "error" in d or not d.get("cats"):
             continue
+
+        # Условно съобщение — по едно, преди таблицата на летището.
+        msg = d.get("message")
+        msg_html = (f'<div class="cond-msg">⚠ {msg}</div>' if msg else "")
+
+        RH_row = d.get("RH") or [None] * len(d["hours_utc"])
+
         detail += f"""
         <div class="detail-block">
           <h3>{icao} — {d['name']}</h3>
+          {msg_html}
           <table class="detail-table">
-            <tr><th>UTC</th><th>VIS m</th><th>T °C</th><th>CAT</th></tr>"""
-        for i, (h, vis, T, cat) in enumerate(zip(
-                d["hours_utc"], d["vis"], d["T"], d["cats"])):
+            <tr><th>UTC</th><th>VIS m</th><th>T °C</th><th>RH %</th><th>CAT</th></tr>"""
+        for i, (h, vis, T, rh, cat) in enumerate(zip(
+                d["hours_utc"], d["vis"], d["T"], RH_row, d["cats"])):
             color = CAT_COLOR.get(cat, "#fff")
+            rh_txt = f"{rh:.0f}" if rh is not None else "—"
             detail += f"""
             <tr>
               <td>{h:.0f}</td>
               <td>{vis:.0f}</td>
               <td>{T:.1f}</td>
+              <td>{rh_txt}</td>
               <td style="color:{color};font-weight:bold">{cat}</td>
             </tr>"""
         detail += "</table></div>"
+
+    # Реперни числа — от baseline.json (четени, не преизчислени тук).
+    baseline = payload.get("baseline")
+    if baseline and baseline.get("csi") is not None:
+        baseline_html = (
+            f"CSI {baseline['csi']:.4f} · "
+            f"средна грешка по температура {baseline['mae_t']:.3f} °C · "
+            f"{baseline['n_evaluated']} нощи"
+            + (f" ({baseline['n_excluded']} изключени)"
+               if baseline.get("n_excluded") else "")
+            + (f" · {baseline['period']}" if baseline.get("period") else "")
+            + (f" · репер {baseline['tag']}" if baseline.get("tag") else ""))
+    else:
+        baseline_html = "репер неизвестен — baseline.json липсва"
 
     return f"""<!DOCTYPE html>
 <html lang="bg">
@@ -407,10 +537,22 @@ def build_html(payload):
     }}
     .detail-block {{
       display: inline-block; vertical-align: top;
-      margin: 10px; width: 180px;
+      margin: 10px; width: 220px;
     }}
     .detail-table td, .detail-table th {{
       padding: 5px 8px; font-size: 12px;
+    }}
+    .perm-note {{
+      color: #7a8fa0; font-size: 11px; font-weight: normal;
+      margin-top: 2px;
+    }}
+    .cond-msg {{
+      background: #3a2a00; border: 1px solid #cc8800;
+      color: #ffcc66; font-size: 12px; padding: 8px 10px;
+      border-radius: 4px; margin-bottom: 8px; line-height: 1.4;
+    }}
+    .baseline-line {{
+      color: #6a9ab0; font-size: 12px; margin: 4px 0 16px 0;
     }}
     .footer {{
       margin-top: 40px; color: #456; font-size: 12px;
@@ -432,6 +574,7 @@ def build_html(payload):
 <div id="content">
 <h1>Airport Fog Nowcasting</h1>
 <div class="run-time">Последен рун: {run_time} | Следващ: автоматично след 1 час</div>
+<div class="baseline-line">{baseline_html}</div>
 
 <div class="legend">
   <div class="legend-item">

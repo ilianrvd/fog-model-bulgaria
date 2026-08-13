@@ -85,6 +85,20 @@ def fisher(a, b, c, d):
 rows = list(csv.DictReader(open(opt.csv, encoding="utf-8")))
 print(f"  прочетени {len(rows)} случая")
 
+# Изключване на валежно-доминираните случаи, ако колоната я има.
+# Стар features.csv (отпреди collect_features.py да вика
+# vc.diagnose_obs_cause) няма "excluded" колона изобщо — тогава нищо
+# не се филтрира тук, конвенцията остава 288-редова, каквато си е.
+if rows and "excluded" in rows[0]:
+    n_before = len(rows)
+    rows = [r for r in rows if r.get("excluded", "").strip().lower()
+            not in ("true", "1")]
+    n_excl = n_before - len(rows)
+    print(f"  изключени (валеж): {n_excl}  →  {len(rows)} оценявани")
+else:
+    print("  ВНИМАНИЕ: features.csv няма 'excluded' колона — "
+          "работя върху 288-редовата конвенция без филтриране.")
+
 
 def block(rs, label):
     """Надеждност за една група станции."""

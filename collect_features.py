@@ -118,6 +118,12 @@ def run_one(path):
         icao, cat, ds, obs = vc.load_case_file(path)
         hist, regime = vc.run_model(icao, ds, vc.START_HOUR, obs)
         ev = vc.evaluate(hist, obs, vc.START_HOUR, ds)
+        # Изключване на валежно-доминирани случаи — СЪЩИЯТ класификатор,
+        # който verify_cases.py ползва за гейта (282 оценявани + 6
+        # изключени, репер v26-D2-soil-clip). Преди тази поправка
+        # collect_features.py въобще не го викаше и features.csv носеше
+        # старата 288-конвенция.
+        excluded, excluded_reason, _ = vc.diagnose_obs_cause(obs)
 
     # моделен ход по часове
     hourly = []
@@ -144,6 +150,7 @@ def run_one(path):
         case=os.path.splitext(os.path.basename(path))[0],
         icao=icao, cat=cat, date=ds,
         event=ev["event"],
+        excluded=excluded, excluded_reason=excluded_reason,
         mod_min_vis=float(ev["mod_min_vis"]),
         T_MAE=None if ev["T"]["MAE"] is None else float(ev["T"]["MAE"]),
         onset=ev.get("onset_dt_h"),
