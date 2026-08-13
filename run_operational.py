@@ -56,14 +56,14 @@ MSG_HIGH_RH_UNRELIABLE = (
 # верификацията). LBGO/LBWN/LBBG нямат тази специфика.
 MSG_B_AIRPORTS = {"LBSF", "LBPD"}
 
-PERM_MSG = {
-    "LBGO": ("Най-добрата обща прогноза в набора. Прогнозата за ясно "
-             "тук е по-слаба, отколкото на другите станции."),
-    "LBWN": ("Зимните случаи са надеждни. Летните морски мъгли не са "
-             "изследвани — механизмът е неизвестен."),
-    "LBBG": ("Нула мъглени случая в набора. Моделът не е оценяван по "
-             "основната си задача на тази станция."),
-}
+# Постоянните станционни съобщения (LBGO/LBWN/LBBG) отпаднаха от
+# прогнозите — статична информация, документирана веднъж в модела,
+# не по всяка нощ. ЕДИНСТВЕНО изключение: LBBG бележката е ограничение
+# на валидността (нула мъглени случая в целия набор — станцията не е
+# оценена по основната си задача), не характеристика на прогнозата.
+# Премества се при реперните числа — виж LBBG_VALIDITY_NOTE по-долу.
+LBBG_VALIDITY_NOTE = ("LBBG: нула мъглени случая в набора — "
+                       "моделът не е оценяван там.")
 
 
 def _rh_threshold():
@@ -379,15 +379,10 @@ def build_html(payload):
             c = CAT_COLOR.get(cat, "#aaa")
             timeline += f'<span style="color:{c};font-family:monospace">{SYM[cat]}</span>'
 
-        # Постоянен ред по станция — малък, сив, до името. Само за
-        # LBGO/LBWN/LBBG. Винаги видим, не е предупреждение.
-        perm = PERM_MSG.get(icao)
-        perm_html = (f'<div class="perm-note">{perm}</div>' if perm else "")
-
         rows += f"""
             <tr style="background:{bg}22">
               <td><b>{icao}</b></td>
-              <td>{d['name']}{perm_html}</td>
+              <td>{d['name']}</td>
               <td style="color:{color};font-weight:bold">{rating}</td>
               <td>{min_vis} m</td>
               <td>{fog_h}h</td>
@@ -407,13 +402,15 @@ def build_html(payload):
 
         # Условно съобщение — по едно, преди таблицата на летището.
         msg = d.get("message")
-        msg_html = (f'<div class="cond-msg">⚠ {msg}</div>' if msg else "")
+        msg_html = (f'<div class="cond-msg">ℹ {msg}</div>' if msg else "")
 
         RH_row = d.get("RH") or [None] * len(d["hours_utc"])
+        regime_badge = d.get("regime", "").upper()
 
         detail += f"""
         <div class="detail-block">
           <h3>{icao} — {d['name']}</h3>
+          <div class="regime-badge">{regime_badge}</div>
           {msg_html}
           <table class="detail-table">
             <tr><th>UTC</th><th>VIS m</th><th>T °C</th><th>RH %</th><th>CAT</th></tr>"""
@@ -444,6 +441,11 @@ def build_html(payload):
             + (f" · репер {baseline['tag']}" if baseline.get("tag") else ""))
     else:
         baseline_html = "репер неизвестен — baseline.json липсва"
+
+    # LBBG — ограничение на валидността, не характеристика на
+    # прогнозата. Показва се веднъж, до реперните числа, не по всяка
+    # нощ на реда на летището.
+    baseline_html += f'<div class="validity-note">{LBBG_VALIDITY_NOTE}</div>'
 
     return f"""<!DOCTYPE html>
 <html lang="bg">
@@ -542,17 +544,20 @@ def build_html(payload):
     .detail-table td, .detail-table th {{
       padding: 5px 8px; font-size: 12px;
     }}
-    .perm-note {{
-      color: #7a8fa0; font-size: 11px; font-weight: normal;
-      margin-top: 2px;
+    .regime-badge {{
+      display: inline-block; color: #7a8fa0; font-size: 11px;
+      letter-spacing: 1px; margin-bottom: 6px;
     }}
     .cond-msg {{
-      background: #3a2a00; border: 1px solid #cc8800;
-      color: #ffcc66; font-size: 12px; padding: 8px 10px;
-      border-radius: 4px; margin-bottom: 8px; line-height: 1.4;
+      background: #f4f6f8; border-left: 3px solid #5a7a9a;
+      color: #2a3540; font-size: 12px; padding: 8px 10px 8px 12px;
+      border-radius: 2px; margin-bottom: 8px; line-height: 1.4;
     }}
     .baseline-line {{
       color: #6a9ab0; font-size: 12px; margin: 4px 0 16px 0;
+    }}
+    .validity-note {{
+      color: #5a7a9a; font-size: 11px; margin-top: 4px;
     }}
     .footer {{
       margin-top: 40px; color: #456; font-size: 12px;
