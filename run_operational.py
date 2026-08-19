@@ -85,7 +85,7 @@ def build_message(icao, regime_start, forecast_fog, rh_early):
     Живото NEAR НЕ участва тук — отпаднало изцяло (измерено и
     затворено: 18.2%, p=0.273, сигналът е несъществен извън LBGO).
     """
-    if regime_start == "dynamic":
+    if regime_start == "dynamic" and not forecast_fog:
         return MSG_DYNAMIC
     if (regime_start == "radiative" and forecast_fog
             and icao in MSG_B_AIRPORTS):
@@ -175,6 +175,7 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     current_tau    = tau
     pending_regime = None
     pending_count  = 0
+    regime_hourly  = [regime]   # подравнено с r0 — снимката преди цикъла
 
     from fog_model import _sin_elevation
     import io as _io, sys as _sys2
@@ -228,8 +229,9 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
 
         if step % steps_per_hr == 0:
             model.diagnose()
+            regime_hourly.append(current_regime)
 
-    return model.history, regime, reason
+    return model.history, regime, reason, regime_hourly
 
 
 def main():
@@ -265,7 +267,7 @@ def main():
     for icao in ALL_AIRPORTS:
         print(f"\n--- {icao} ---")
         try:
-            history, regime, reason = run_airport(icao, metars.get(icao))
+            history, regime, reason, regime_hourly = run_airport(icao, metars.get(icao))
             min_vis = min(r["vis_sfc"] for r in history)
             min_t   = next(r["hour_utc"] for r in history if r["vis_sfc"] == min_vis)
             fog_h   = sum(1 for r in history if r["vis_sfc"] < 1000)
@@ -306,6 +308,7 @@ def main():
                 "fog_hours"   : fog_h,
                 "rating"      : rating,
                 "regime"      : regime,          # режимът при старт (18 UTC)
+                "regime_hourly": regime_hourly,  # режимът на всеки час, подравнен с hours_utc
                 "cats"        : cats,
                 "hours_utc"   : hours_utc,
                 "vis"         : vis_list,
@@ -405,6 +408,7 @@ def build_html(payload):
         msg_html = (f'<div class="cond-msg">ℹ {msg}</div>' if msg else "")
 
         RH_row = d.get("RH") or [None] * len(d["hours_utc"])
+        regime_row = d.get("regime_hourly") or [None] * len(d["hours_utc"])
         regime_badge = d.get("regime", "").upper()
 
         detail += f"""
@@ -413,11 +417,12 @@ def build_html(payload):
           <div class="regime-badge">{regime_badge}</div>
           {msg_html}
           <table class="detail-table">
-            <tr><th>UTC</th><th>VIS m</th><th>T °C</th><th>RH %</th><th>CAT</th></tr>"""
-        for i, (h, vis, T, rh, cat) in enumerate(zip(
-                d["hours_utc"], d["vis"], d["T"], RH_row, d["cats"])):
+            <tr><th>UTC</th><th>VIS m</th><th>T °C</th><th>RH %</th><th>CAT</th><th>Режим</th></tr>"""
+        for i, (h, vis, T, rh, cat, rg) in enumerate(zip(
+                d["hours_utc"], d["vis"], d["T"], RH_row, d["cats"], regime_row)):
             color = CAT_COLOR.get(cat, "#fff")
             rh_txt = f"{rh:.0f}" if rh is not None else "—"
+            rg_txt = rg.upper() if rg else "—"
             detail += f"""
             <tr>
               <td>{h:.0f}</td>
@@ -425,6 +430,7 @@ def build_html(payload):
               <td>{T:.1f}</td>
               <td>{rh_txt}</td>
               <td style="color:{color};font-weight:bold">{cat}</td>
+              <td style="color:#7a8fa0;font-size:11px">{rg_txt}</td>
             </tr>"""
         detail += "</table></div>"
 
