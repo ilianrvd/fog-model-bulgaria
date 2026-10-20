@@ -532,7 +532,7 @@ def build_html(payload):
     }}
     .detail-block {{
       display: inline-block; vertical-align: top;
-      margin: 10px; width: 220px;
+      margin: 10px; min-width: 300px;
     }}
     .detail-table td, .detail-table th {{
       padding: 5px 8px; font-size: 12px;

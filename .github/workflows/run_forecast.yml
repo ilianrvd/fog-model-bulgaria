@@ -1,9 +1,13 @@
 name: Fog Forecast
 
 on:
-  schedule:
-    - cron: '20 18 * * *'
+  # Пуска се от cron-job.org в 18:15 UTC (POST .../dispatches).
+  # Вграденото разписание на Actions закъсняваше силно.
   workflow_dispatch:
+
+concurrency:
+  group: fog-forecast
+  cancel-in-progress: false
 
 permissions:
   contents: write
