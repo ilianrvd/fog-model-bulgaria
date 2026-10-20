@@ -13,12 +13,15 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 from fog_model      import FogModel1D
-from icon_reader    import fetch_icon_eu, fetch_icon_eu_all, AIRPORT_COORDS
+from icon_reader    import AIRPORT_COORDS
 from metar_fetcher  import fetch_all_airports
 from ogimet_fetcher import fetch_metar_ogimet, fetch_all_ogimet_parallel
 from metar_parser   import parse_metar, apply_metar_correction
 from run_case       import (build_surface_layer, diagnose_regime,
-                            apply_nudging, AIRPORT_CONFIG)
+                            apply_nudging, AIRPORT_CONFIG,
+                            fetch_icon_historical,
+                            init_model_state, reassess_regime)
+from verify_cases   import FORECAST_H as _VERIFY_FORECAST_H
 # get_sst е премахнат (31.07.2026) заедно с мъртвата конфигурация
 # sst_month / sea_sector / N_d — никога не се четяха. Тук беше
 # само неизползван импорт.
@@ -98,27 +101,54 @@ def build_message(icao, regime_start, forecast_fog, rh_early):
 
 
 
-# Кеш за ICON профилите — зареждаме всички с 1 заявка
-_ICON_PROFILES_CACHE = {}
+# ── ICON: СЪЩОТО теглене като верификацията (20.10.2026) ──────────
+# Преди тази дата оперативният път теглеше ICON през icon_reader
+# (fetch_icon_eu_all / fetch_icon_eu) — отделен код без порив, без
+# облачност за SEB, без почвена температура (в груповата заявка) и без
+# приземната 10m/2m корекция на почасовите профили. Сега се ползва
+# run_case.fetch_icon_historical — функцията, с която е изтеглен целият
+# верификационен кеш (icon_cache/) за CSI 0.4019.
+#
+# Броят почасови профили е ЕДНАКЪВ с верификацията (FORECAST_H + 1),
+# защото режимната преоценка гледа до 6 часа напред: с по-къса редица
+# решенията в последните часове на нощта се разминават.
+ICON_FORECAST_HOURS = _VERIFY_FORECAST_H + 1
 
-def load_icon_profiles_all(hours=12):
-    """Изтегля ICON профили за всички летища с 1 заявка."""
-    global _ICON_PROFILES_CACHE
-    _ICON_PROFILES_CACHE = fetch_icon_eu_all(ALL_AIRPORTS, forecast_hours=int(hours)+1)
-    print(f"[ICON-EU ALL] Заредени {len(_ICON_PROFILES_CACHE)} летища")
+
+def fetch_icon_operational(icao, date_str, hour0, attempts=5):
+    """run_case.fetch_icon_historical + повторни опити при мрежова
+    грешка или 429. Самите данни не се пипат."""
+    import time as _t
+    last = None
+    for k in range(attempts):
+        try:
+            return fetch_icon_historical(icao, date_str, hour0,
+                                         forecast_hours=ICON_FORECAST_HOURS)
+        except RuntimeError as e:
+            last = e
+            wait = 20 * (k + 1)
+            print(f"[ICON-EU] {icao}: опит {k+1}/{attempts} неуспешен: {e} "
+                  f"— изчаквам {wait}s")
+            _t.sleep(wait)
+    raise RuntimeError(f"ICON недостъпен за {icao}: {last}")
 
 
-def run_airport(icao, metar_raw, hours=12, dt=60):
+def run_airport(icao, metar_raw, hours=12, dt=60, profile=None, now=None):
+    """
+    Един оперативен пробег. Начално състояние и режимен автомат —
+    ОБЩИТЕ функции от run_case.py, т.е. верифицираният модел.
+
+    profile, now — само за сухия тест (test_operational_regime.py):
+    кеширан ICON профил и историческа дата вместо живите.
+    """
     cfg = AIRPORT_CONFIG[icao]
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
-    doy = now.timetuple().tm_yday
+    doy   = now.timetuple().tm_yday
+    hour0 = now.hour
 
-    # Вземаме от кеша или изтегляме поотделно
-    if icao in _ICON_PROFILES_CACHE:
-        profile = _ICON_PROFILES_CACHE[icao]
-    else:
-        profile = fetch_icon_eu(icao, forecast_hours=int(hours)+1)
+    if profile is None:
+        profile = fetch_icon_operational(icao, date_str, hour0)
 
     metar_dict = {}
     if metar_raw:
@@ -132,8 +162,6 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     regime, tau, reason = diagnose_regime(profile, metar_dict, cfg)
 
     # Р2: Логаритмична вертикална мрежа (Tardif 2007)
-    # Фина при земята (Δz~0.14m @ z=0.5m), груба горе (Δz~100m @ z=2000m)
-    # Критично за приземното охлаждане и образуването на мъгла
     z_log   = np.logspace(np.log10(0.5), np.log10(50), 20)
     z_lin   = np.linspace(55, 2000, 20)
     z_model = np.concatenate([z_log, z_lin])
@@ -144,26 +172,15 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     v_m  = np.interp(z_model, profile["z"], profile["v"])
 
     # Слънчевата геометрия зависи от географската дължина (31.07.2026).
-    # Без това пладнето се смята за средната дължина 25.5E и грешката
-    # достига 6 минути на изток/запад. Задава се преди пробега.
     import fog_model as _fm
     _c = AIRPORT_COORDS[icao]
     _fm.set_solar_site(_c["lat"], _c["lon"])
 
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
-                       hour0=profile["hour0"], dt=dt, day_of_year=doy)
+                       hour0=float(hour0), dt=dt, day_of_year=doy)
 
-    T_soil_icon = profile.get("T_soil")
-    if T_soil_icon is not None:
-        model.T_soil = float(T_soil_icon)
-        model.T_skin = float(T_soil_icon)   # старт: повърхността ≈ почвата
-        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
-
-    ql_init_raw = profile.get("ql_init", None)
-    if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
-        model.ql = np.interp(z_model, profile["z"], ql_init_raw)
-    else:
-        model.ql = np.zeros(len(z_model))
+    # Облачност, почва (fix_soil) и начална водност — общата функция
+    init_model_state(model, profile, cfg, z_model)
 
     steps_total  = int(hours * 3600 / dt)
     steps_per_hr = int(3600 / dt)
@@ -176,53 +193,28 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
     pending_regime = None
     pending_count  = 0
     regime_hourly  = [regime]   # подравнено с r0 — снимката преди цикъла
-
-    from fog_model import _sin_elevation
-    import io as _io, sys as _sys2
+    regime_log     = [{"hour_utc": float(hour0), "regime": regime,
+                       "reason": reason}]
 
     for step in range(1, steps_total + 1):
         model.step()
 
         hour_elapsed = step * dt / 3600.0
-        prof_idx     = min(int(hour_elapsed), len(hourly_profs)-1)
+        prof_idx     = min(int(hour_elapsed), max(len(hourly_profs) - 1, 0))
 
-        # Hourly reassessment
+        # Почасова преоценка — общата функция от run_case.py
         if step % steps_per_hr == 0 and hourly_profs:
-            hour_now  = (float(profile["hour0"]) + hour_elapsed) % 24
-            hour_next = (hour_now + 1) % 24
-            sin_el      = _sin_elevation(hour_now,  doy)
-            sin_el_next = _sin_elevation(hour_next, doy)
-            is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
-
-            remaining = hourly_profs[prof_idx:]
-            if len(remaining) < 3:
-                remaining = hourly_profs[-3:]
-            _old_out = _sys2.stdout
-            _sys2.stdout = _io.StringIO()
-            cand_regime, cand_tau, _ = diagnose_regime(
-                {"hourly_profiles": remaining}, {}, cfg)
-            _sys2.stdout = _old_out
-
-            if is_sunrise and current_regime == "radiative":
-                cand_regime = "dynamic"
-                cand_tau    = 7200
-            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunrise:
-                cand_regime = "dynamic"
-                cand_tau    = current_tau
-
-            if cand_regime != current_regime:
-                pending_regime = cand_regime if cand_regime == pending_regime else cand_regime
-                pending_count  = pending_count + 1 if cand_regime == pending_regime else 1
-                threshold = 1 if is_sunrise else 2
-                if pending_count >= threshold:
-                    current_regime = cand_regime
-                    current_tau    = cand_tau
-                    pending_regime = None
-                    pending_count  = 0
-            else:
-                pending_regime = None
-                pending_count  = 0
-
+            hour_now = (float(hour0) + hour_elapsed) % 24
+            ra = reassess_regime(current_regime, current_tau,
+                                 pending_regime, pending_count,
+                                 hour_now, doy, hourly_profs, prof_idx,
+                                 metar_dict, cfg)
+            if ra["changed"]:
+                regime_log.append({"hour_utc": hour_now,
+                                   "regime": ra["regime"],
+                                   "reason": ra["reason"]})
+            current_regime, current_tau = ra["regime"], ra["tau"]
+            pending_regime, pending_count = ra["pending_regime"], ra["pending_count"]
 
         if current_tau and hourly_profs:
             apply_nudging(model, hourly_profs[prof_idx], cfg["tau_T"], current_tau)
@@ -231,6 +223,7 @@ def run_airport(icao, metar_raw, hours=12, dt=60):
             model.diagnose()
             regime_hourly.append(current_regime)
 
+    run_airport.last_regime_log = regime_log   # за сухия тест
     return model.history, regime, reason, regime_hourly
 
 
@@ -254,12 +247,6 @@ def main():
             best = min(obs, key=lambda o: abs(int(o["time"][11:13]) - _hour))
             metars[icao] = best.get("raw", "")
             print(f"[METAR] {icao}: {metars[icao][:60]}")
-
-    # Зареждаме ICON профили за всички летища с 1 заявка
-    try:
-        load_icon_profiles_all(hours=12)
-    except Exception as e:
-        print(f"[ICON-EU ALL] Грешка: {e} — ще опитаме поотделно")
 
     # Модел за всяко летище
     import time as _time_op

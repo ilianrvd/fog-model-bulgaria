@@ -391,13 +391,14 @@ def fetch_icon_cached(icao, date_str, hour, forecast_hours):
 # ──────────────────────────────────────────────────────────────────────────
 def run_model(icao, date_str, hour, obs_list, return_series=False):
     from run_case import (build_surface_layer, diagnose_regime,
-                          apply_nudging, AIRPORT_CONFIG)
+                          apply_nudging, AIRPORT_CONFIG,
+                          init_model_state, reassess_regime)
     try:
         from run_case import apply_metar_correction
     except ImportError:
         from metar_parser import apply_metar_correction
     from metar_parser import parse_metar
-    from fog_model import FogModel1D, _sin_elevation
+    from fog_model import FogModel1D
 
     cfg = AIRPORT_CONFIG[icao]
     doy = datetime.strptime(date_str, "%Y-%m-%d").timetuple().tm_yday
@@ -435,25 +436,9 @@ def run_model(icao, date_str, hour, obs_list, return_series=False):
 
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour), dt=60, day_of_year=doy)
-    model.cc_series = profile.get("cc_series", [])
-
-    T_soil_icon = profile.get("T_soil")
-    if T_soil_icon is not None:
-        model.T_soil = float(T_soil_icon)
-        # fix_soil (LBWN): ICON морска клетка дава T_soil=0-3°C при
-        # реални 8-14°C — коригираме до T_air_2m + 2°C (model.T[0] е
-        # приземното ниво от METAR след build_surface_layer)
-        if cfg.get("fix_soil") and (model.T_soil - 273.15) < 5.0:
-            model.T_soil = max(model.T_soil, float(model.T[0]) + 2.0)
-        model.T_skin = min(float(model.T_soil), model.T[0])
-
-    ql_init_raw = profile.get("ql_init")
-    if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
-        model.ql = np.interp(z_model, profile["z"], ql_init_raw)
-    elif ql_init_raw is not None and np.any(np.array(ql_init_raw) > 0):
-        model.ql = np.where(z_model < 50, float(np.max(ql_init_raw)), 0.0)
-    else:
-        model.ql = np.zeros(len(z_model))
+    # Облачност, почва (fix_soil) и начална водност — общата функция
+    # от run_case.py, същата и в run_operational.py
+    init_model_state(model, profile, cfg, z_model)
 
     hourly_profs = profile.get("hourly_profiles", [])
     steps_total, steps_per_hr, dt = FORECAST_H * 60, 60, 60
@@ -461,7 +446,6 @@ def run_model(icao, date_str, hour, obs_list, return_series=False):
     # (steps_per_hr) — сменяме само колко често се снима състоянието.
     steps_out = int(pairing.OUTPUT_INTERVAL_MIN * 60 / dt)
 
-    import io as _io
     current_regime, current_tau = regime, tau
     pending_regime, pending_count = None, 0
     regime_log = [{"hour_utc": hour, "regime": regime, "reason": reason}]
@@ -472,98 +456,21 @@ def run_model(icao, date_str, hour, obs_list, return_series=False):
         hour_elapsed = step * dt / 3600.0
         prof_idx = min(int(hour_elapsed), max(len(hourly_profs) - 1, 0))
 
+        # Почасова преоценка — ОБЩАТА функция от run_case.py (20.10.2026).
+        # До тази дата тук стоеше дословно копие; сега и трите пътя
+        # (run_case, verify_cases, run_operational) викат един код.
         if step % steps_per_hr == 0 and hourly_profs:
-            hour_now  = (float(hour) + hour_elapsed) % 24
-            hour_next = (hour_now + 1) % 24
-            sin_el      = _sin_elevation(hour_now,  doy)
-            sin_el_next = _sin_elevation(hour_next, doy)
-            is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
-
-            remaining = hourly_profs[prof_idx:]
-            if len(remaining) < 3:
-                remaining = hourly_profs[-3:]
-
-            # D4 FIX (само за крайбрежни): текущ ICON вятър вместо {} —
-            # при Варна/Бургас ICON вятърът е надежден адвективен сигнал;
-            # при София котловината ICON надценява вятъра под инверсия
-            # (01-19) → континенталните запазват старото поведение ({}).
-            #
-            # ЗАБЕЛЕЖКА (18.07.2026): унифицираният осреднен вятър тестван
-            # и отхвърлен — вижте run_case.py за детайли. Върнато coastal-only.
-            #
-            # v1.4-SYNC (26.07.2026): блокът по-долу е ДОСЛОВНО копие на
-            # run_case.py, редове 848-880. До тази дата verify_cases.py
-            # съдържаше само v1.3 логиката (без поривен критерий), заради
-            # което гейтът от 26.07 отчете "бит-идентични" резултати —
-            # кръпката v1.4 просто не се е изпълнявала тук. При всяка
-            # бъдеща промяна в run_case.py тези два блока се променят
-            # ЗАЕДНО, иначе гейтът мери друг код.
-            # v20 (27.07.2026): по флага gust_regime, не по coastal.
-            # ДОСЛОВНО като run_case.py.
-            if cfg.get("gust_regime"):
-                # ── Двоен критерий вятър+порив (v1.4) ──
-                #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
-                #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
-                #   смесено                       :  запазва текущия режим
-                # 20.0 е SENTINEL (=10.3 m/s > прага 4 m/s в diagnose_regime),
-                # а не измерена стойност — начин да се форсира DYNAMIC.
-                # Fallback към v1.3 поведение, ако поривът липсва.
-                _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
-                _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
-                _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
-                _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
-                _gust_kt = _cur_wind.get("gust10")
-
-                # v21: прагове по летище — ДОСЛОВНО като run_case.py
-                _v_thr, _g_thr = cfg.get("gust_thresholds", (4.0, 8.0))
-
-                metar_reassess = dict(metar_dict)
-                if _gust_kt is None:
-                    metar_reassess["wind_speed"] = _cur_wspd_kt
-                elif current_regime == "dynamic":
-                    # Излизане само ако И двете са под праг
-                    if _cur_wspd_kt < _v_thr and _gust_kt < _g_thr:
-                        metar_reassess["wind_speed"] = 0.0
-                    else:
-                        metar_reassess["wind_speed"] = 20.0
-                else:
-                    # Влизане само ако И двете са над праг
-                    if _cur_wspd_kt >= _v_thr and _gust_kt >= _g_thr:
-                        metar_reassess["wind_speed"] = 20.0
-                    else:
-                        metar_reassess["wind_speed"] = _cur_wspd_kt
-            else:
-                # Континентални: замразеният стартов METAR (както run_case),
-                # НЕ празен {} — иначе V_sfc=0 и при стартов вятър >4 m/s
-                # (03-14: 27008KT=4.1 m/s) reassessment губи DYNAMIC режима
-                # и охлажда свободно под облаци → -22°C артефакт.
-                metar_reassess = metar_dict
-
-            _old = sys.stdout; sys.stdout = _io.StringIO()
-            cand_regime, cand_tau, cand_reason = diagnose_regime(
-                {"hourly_profiles": remaining}, metar_reassess, cfg)
-            sys.stdout = _old
-
-            if is_sunrise and current_regime == "radiative":
-                cand_regime, cand_tau = "dynamic", 7200
-                cand_reason = "Изгрев → nudging T"
-            if current_regime == "dynamic" and cand_regime == "radiative" \
-               and is_sunrise:
-                cand_regime, cand_tau = "dynamic", current_tau
-
-            if cand_regime != current_regime:
-                pending_count = pending_count + 1 \
-                    if cand_regime == pending_regime else 1
-                pending_regime = cand_regime
-                threshold = 1 if is_sunrise else 2
-                if pending_count >= threshold:
-                    regime_log.append({"hour_utc": (hour + hour_elapsed) % 24,
-                                       "regime": cand_regime,
-                                       "reason": cand_reason})
-                    current_regime, current_tau = cand_regime, cand_tau
-                    pending_regime, pending_count = None, 0
-            else:
-                pending_regime, pending_count = None, 0
+            hour_now = (float(hour) + hour_elapsed) % 24
+            ra = reassess_regime(current_regime, current_tau,
+                                 pending_regime, pending_count,
+                                 hour_now, doy, hourly_profs, prof_idx,
+                                 metar_dict, cfg)
+            if ra["changed"]:
+                regime_log.append({"hour_utc": (hour + hour_elapsed) % 24,
+                                   "regime": ra["regime"],
+                                   "reason": ra["reason"]})
+            current_regime, current_tau = ra["regime"], ra["tau"]
+            pending_regime, pending_count = ra["pending_regime"], ra["pending_count"]
 
         if current_tau and hourly_profs:
             apply_nudging(model, hourly_profs[prof_idx],

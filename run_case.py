@@ -576,6 +576,189 @@ def apply_nudging(model, icon_prof, tau_T, tau_qv):
     # ql никога не се nudge-ва
 
 
+# ──────────────────────────────────────────────────────────────
+# ОБЩИ ФУНКЦИИ (20.10.2026) — един източник за трите пътя:
+# run_case.py, verify_cases.py, run_operational.py
+#
+# Логиката е ПРЕНЕСЕНА дословно от run_case(). Преди тази дата беше
+# написана три пъти; оперативното копие се разминаваше (празно
+# наблюдение {}, без двоен критерий, без fix_soil, без cc_series,
+# обърнат брояч). Всяка промяна в режимния автомат или в началното
+# състояние се прави ТУК — и трите пътя я получават заедно.
+# ──────────────────────────────────────────────────────────────
+
+def init_model_state(model, profile: dict, cfg: dict, z_model) -> None:
+    """
+    Начално състояние на модела след конструктора: облачност за SEB,
+    почва (с fix_soil за LBWN) и начална водност ql.
+    Дословно от run_case(); verify_cases.run_model() е еднакъв.
+    """
+    # Облачност за SEB LW_down — (lo,mid,hi,rh2,pr) по час; дискриминацията
+    # мъгла-vs-облак става в runtime по собствената приземна RH
+    model.cc_series = profile.get("cc_series", [])
+
+    # Почвените температури от ICON
+    T_soil_icon = profile.get("T_soil")
+    if T_soil_icon is not None:
+        model.T_soil = float(T_soil_icon)
+        # fix_soil (LBWN): Варна е в процеп между езеро и море — ICON
+        # няма наземна клетка там, T_soil идва морска (0-3°C вместо
+        # реални 8-14°C), което убива почвения топлинен поток и
+        # причинява тежко преохлаждане. Корекция: T_soil = max(ICON,
+        # T_air_2m + 2°C) само когато ICON < 5°C (ясен признак за морска
+        # клетка). model.T[0] тук е приземното ниво НА МОДЕЛА (от METAR
+        # чрез build_surface_layer), не ICON профилното ниво на 229m.
+        if cfg.get("fix_soil") and (model.T_soil - 273.15) < 5.0:
+            model.T_soil = max(model.T_soil, float(model.T[0]) + 2.0)
+        model.T_skin = float(model.T_soil)   # старт: повърхността ≈ почвата
+        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
+
+    # ql_init може да има различна дължина от profile["z"] след
+    # build_surface_layer. Прилага се само ако има мъгла в METAR.
+    ql_init_raw = profile.get("ql_init", None)
+    if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
+        model.ql = np.interp(z_model, profile["z"], ql_init_raw)
+    elif ql_init_raw is not None and np.any(np.array(ql_init_raw) > 0):
+        # Мъгла в METAR — инициализираме с малко LWC в долните 50m
+        model.ql = np.where(z_model < 50, float(np.max(ql_init_raw)), 0.0)
+    else:
+        model.ql = np.zeros(len(z_model))
+
+
+def reassess_regime(current_regime: str, current_tau, pending_regime,
+                    pending_count: int, hour_now: float, doy: int,
+                    hourly_profs: list, prof_idx: int,
+                    metar_dict: dict, cfg: dict) -> dict:
+    """
+    Почасова преоценка на режима. Вика се в края на всеки цял час.
+
+    Вход
+      current_regime, current_tau : текущо състояние
+      pending_regime, pending_count: кандидат за смяна и брой поредни часа
+      hour_now     : UTC час (0-24) в момента на преоценката
+      doy          : ден от годината
+      hourly_profs : всички почасови ICON профили от старта
+      prof_idx     : индекс на текущия час в hourly_profs
+      metar_dict   : СТАРТОВИЯТ METAR (замразен) — никога {}
+      cfg          : AIRPORT_CONFIG[icao]
+
+    Изход (dict)
+      regime, tau     : режимът след преоценката
+      reason          : причината на кандидата
+      pending_regime, pending_count : новото pending състояние
+      changed         : True ако режимът е сменен в този час
+      from_regime     : режимът преди преоценката
+    """
+    from fog_model import _sin_elevation
+    import io as _io, sys as _sys
+
+    hour_next   = (hour_now + 1) % 24
+    sin_el      = _sin_elevation(hour_now,  doy)
+    sin_el_next = _sin_elevation(hour_next, doy)
+    is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
+    is_sunset   = sin_el > 0.05 and sin_el_next < sin_el
+
+    # Диагностика от ICON профилите напред
+    remaining_profs = hourly_profs[prof_idx:]
+    if len(remaining_profs) < 3:
+        remaining_profs = hourly_profs[-3:]
+
+    # D4 FIX / v20: при летищата с gust_regime (LBWN, LBBG, LBGO) се
+    # подава текущият ICON приземен вятър през двойния критерий
+    # вятър+порив. Останалите (LBSF, LBPD) — замразеният стартов METAR,
+    # НЕ празен {} (иначе V_sfc=0 и правилата „V > 4 m/s → dynamic" и
+    # „крайбрежно + V > 3 m/s → advective" никога не се задействат).
+    # Историята на решенията — виж коментарите в AIRPORT_CONFIG.
+    if cfg.get("gust_regime"):
+        #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
+        #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
+        #   смесено                       :  запазва текущия режим
+        # 20.0 е SENTINEL (=10.3 m/s > прага 4 m/s в diagnose_regime),
+        # а не измерена стойност — начин да се форсира DYNAMIC; 0.0 —
+        # начин да се форсира излизане. Fallback към реалния вятър,
+        # ако поривът липсва.
+        _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
+        _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
+        _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
+        _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
+        _gust_kt = _cur_wind.get("gust10")
+
+        _v_thr, _g_thr = cfg.get("gust_thresholds", (4.0, 8.0))
+
+        metar_reassess = dict(metar_dict)
+        if _gust_kt is None:
+            metar_reassess["wind_speed"] = _cur_wspd_kt
+        elif current_regime == "dynamic":
+            # Излизане само ако И двете са под праг
+            if _cur_wspd_kt < _v_thr and _gust_kt < _g_thr:
+                metar_reassess["wind_speed"] = 0.0
+            else:
+                metar_reassess["wind_speed"] = 20.0
+        else:
+            # Влизане само ако И двете са над праг
+            if _cur_wspd_kt >= _v_thr and _gust_kt >= _g_thr:
+                metar_reassess["wind_speed"] = 20.0
+            else:
+                metar_reassess["wind_speed"] = _cur_wspd_kt
+    else:
+        metar_reassess = metar_dict
+
+    _old_stdout = _sys.stdout
+    _sys.stdout = _io.StringIO()
+    try:
+        cand_regime, cand_tau, cand_reason = diagnose_regime(
+            {"hourly_profiles": remaining_profs}, metar_reassess, cfg)
+    finally:
+        _sys.stdout = _old_stdout
+
+    # ── Специални правила за изгрев/залез ──
+    # Изгрев → RADIATIVE → DYNAMIC (веднага, без изчакване)
+    if is_sunrise and current_regime == "radiative":
+        cand_regime = "dynamic"
+        cand_tau    = 7200
+        cand_reason = f"Изгрев (sin_el={sin_el:.2f}↑) → nudging T τ=2h"
+
+    # При изгрев не се връщаме към RADIATIVE
+    if current_regime == "dynamic" and cand_regime == "radiative" and is_sunrise:
+        cand_regime = "dynamic"
+        cand_tau    = current_tau
+        cand_reason = "Изгрев продължава — задържаме DYNAMIC"
+
+    # Залез + тихо → DYNAMIC → RADIATIVE позволено (без специално действие)
+    if current_regime == "dynamic" and cand_regime == "radiative" and is_sunset:
+        pass
+
+    # ── Правило за 2 последователни часа ──
+    new_regime, new_tau, changed = current_regime, current_tau, False
+    if cand_regime != current_regime:
+        if cand_regime == pending_regime:
+            pending_count += 1
+        else:
+            pending_regime = cand_regime
+            pending_count  = 1
+
+        # Смяна при 2 последователни часа (или веднага при изгрев)
+        threshold = 1 if is_sunrise else 2
+        if pending_count >= threshold:
+            new_regime, new_tau, changed = cand_regime, cand_tau, True
+            pending_regime = None
+            pending_count  = 0
+    else:
+        # Режимът потвърден — нулираме pending
+        pending_regime = None
+        pending_count  = 0
+
+    return {
+        "regime"        : new_regime,
+        "tau"           : new_tau,
+        "reason"        : cand_reason,
+        "pending_regime": pending_regime,
+        "pending_count" : pending_count,
+        "changed"       : changed,
+        "from_regime"   : current_regime,
+    }
+
+
 
 # ──────────────────────────────────────────────────────────────
 # Приземна параметризация (COBEL-ABLE стил)
@@ -777,40 +960,14 @@ def run_case(icao: str, date_str: str, hour0: int,
     model = FogModel1D(z_model, T_m, qv_m, p_m, u_m, v_m,
                        hour0=float(hour0), dt=dt, day_of_year=doy)
 
-    # Облачност за SEB LW_down — (lo,mid,hi) тройки; дискриминацията
-    # мъгла-vs-облак става в runtime по собствената приземна RH
-    model.cc_series = profile.get("cc_series", [])
-
-    # Инициализираме почвените температури от ICON
+    # Облачност, почва (fix_soil) и начална водност — общата функция
+    init_model_state(model, profile, cfg, z_model)
     T_soil_icon = profile.get("T_soil")
     if T_soil_icon is not None:
-        model.T_soil = float(T_soil_icon)
-        # fix_soil (LBWN): Варна е в процеп между езеро и море — ICON
-        # няма наземна клетка там, T_soil идва морска (0-3°C вместо
-        # реални 8-14°C), което убива почвения топлинен поток и
-        # причинява тежко преохлаждане. Корекция: T_soil = max(ICON,
-        # T_air_2m + 2°C) само когато ICON < 5°C (ясен признак за морска
-        # клетка). model.T[0] тук е приземното ниво НА МОДЕЛА (от METAR
-        # чрез build_surface_layer), не ICON профилното ниво на 229m.
-        if cfg.get("fix_soil") and (model.T_soil - 273.15) < 5.0:
-            model.T_soil = max(model.T_soil, float(model.T[0]) + 2.0)
-        model.T_skin = float(model.T_soil)   # старт: повърхността ≈ почвата
-        model.T_skin = min(model.T_skin, model.T[0])  # не по-топла от въздуха
-        model._log_qv = True   # qv профил лог
         print(f"[SOIL] T_soil от ICON: {T_soil_icon-273.15:.1f}°C  "
               f"(T_air={T_m[0]-273.15:.1f}°C  ΔT={T_m[0]-T_soil_icon:+.1f}K)")
     else:
         print(f"[SOIL] T_soil не е налична — използваме T_air")
-    # ql_init може да има различна дължина от profile["z"] след build_surface_layer
-    # Затова го нулираме и прилагаме само ако има мъгла в METAR
-    ql_init_raw = profile.get("ql_init", None)
-    if ql_init_raw is not None and len(ql_init_raw) == len(profile["z"]):
-        model.ql = np.interp(z_model, profile["z"], ql_init_raw)
-    elif ql_init_raw is not None and np.any(np.array(ql_init_raw) > 0):
-        # Мъгла в METAR — инициализираме с малко LWC в долните 50m
-        model.ql = np.where(z_model < 50, np.max(ql_init_raw), 0.0)
-    else:
-        model.ql = np.zeros(len(z_model))
 
     # 5. Диагностика на режима
     regime, tau, reason = diagnose_regime(profile, metar_dict, cfg)
@@ -849,131 +1006,26 @@ def run_case(icao: str, date_str: str, hour0: int,
     pending_regime = None   # кандидат за смяна (трябва 2 последователни часа)
     pending_count  = 0      # брой последователни часа с новия режим
 
-    from fog_model import _sin_elevation
-    import io, sys as _sys
-
     for step in range(1, steps_total + 1):
         model.step()
 
         hour_elapsed = step * dt / 3600.0
         prof_idx     = min(int(hour_elapsed), len(hourly_profs) - 1)
 
-        # ── Hourly reassessment на режима ──────────────────────────────
+        # ── Hourly reassessment на режима — общата функция ─────────────
         if step % steps_per_hr == 0 and hourly_profs:
-            hour_now  = (float(hour0) + hour_elapsed) % 24
-            hour_next = (hour_now + 1) % 24
-            sin_el      = _sin_elevation(hour_now,  doy)
-            sin_el_next = _sin_elevation(hour_next, doy)
-            is_sunrise  = sin_el > 0.05 and sin_el_next > sin_el
-            is_sunset   = sin_el > 0.05 and sin_el_next < sin_el
-
-            # Диагностика от ICON профилите напред
-            remaining_profs = hourly_profs[prof_idx:]
-            if len(remaining_profs) < 3:
-                remaining_profs = hourly_profs[-3:]
-
-            # D4 FIX (само за крайбрежни летища): подаваме текущия ICON
-            # приземен вятър вместо замразения стартов METAR. При Варна/
-            # Бургас ICON вятърът е надежден сигнал за адвекция (11-20,
-            # 03-14). При София котловината ICON НАДЦЕНЯВА приземния
-            # вятър под инверсия (01-19: ICON 4.9-7 m/s при реално тихо)
-            # → фалшиви DYNAMIC превключвания убиват мъглата. Затова
-            # континенталните летища запазват старото поведение.
-            #
-            # ЗАБЕЛЕЖКА (18.07.2026): опитахме унифицирано осреднен вятър
-            # (7/4kt hysteresis) за всички летища — Варна/Бургас/Горна:
-            # без ефект; София: нетна загуба (CLDY регресии се върнаха).
-            # Върнато към coastal-only. Decoupling-осъзнат подход е
-            # следващият кандидат, не уеднаквено вятърно правило.
-            #
-            # v20 (27.07.2026): условието вече е по флага gust_regime,
-            # не по coastal. Добавени LBGO и LBPD — сухият пробег дава
-            # 0 % засегнати HIT при тях. София остава вън: скан на
-            # прагове показа, че разделяща двойка не съществува.
-            # ВАЖНО: същото условие стои и във verify_cases.py.
-            if cfg.get("gust_regime"):
-                # ── ЕКСПЕРИМЕНТ 26.07.2026: двоен критерий вятър+порив ──
-                # Само LBWN/LBBG, само reassessment. Праговете НЕ се
-                # променят по стойност, а по величина:
-                #   RADIATIVE/ADVECTIVE → DYNAMIC :  V >= 4kt И Gust >= 8kt
-                #   DYNAMIC → RADIATIVE           :  V <  4kt И Gust <  8kt
-                #   смесено                       :  запазва текущия режим
-                # Вариант Б: при смесено/тихо и текущ НЕ-DYNAMIC подаваме
-                # реалния вятър, за да остане възможен ADVECTIVE клонът.
-                # Fallback към старото поведение, ако поривът липсва.
-                _cur_wind = hourly_profs[min(prof_idx, len(hourly_profs) - 1)]
-                _cur_u = float(_cur_wind["u"][0]) if "u" in _cur_wind else 0.0
-                _cur_v = float(_cur_wind["v"][0]) if "v" in _cur_wind else 0.0
-                _cur_wspd_kt = float(np.hypot(_cur_u, _cur_v)) / 0.5144
-                _gust_kt = _cur_wind.get("gust10")
-
-                # v21: прагове по летище. Подразбиране (4, 8);
-                # LBPD е на (4, 12) — виж коментара в AIRPORT_CONFIG.
-                _v_thr, _g_thr = cfg.get("gust_thresholds", (4.0, 8.0))
-
-                metar_reassess = dict(metar_dict)
-                if _gust_kt is None:
-                    metar_reassess["wind_speed"] = _cur_wspd_kt
-                elif current_regime == "dynamic":
-                    # Излизане само ако И двете са под праг
-                    if _cur_wspd_kt < _v_thr and _gust_kt < _g_thr:
-                        metar_reassess["wind_speed"] = 0.0
-                    else:
-                        metar_reassess["wind_speed"] = 20.0
-                else:
-                    # Влизане само ако И двете са над праг
-                    if _cur_wspd_kt >= _v_thr and _gust_kt >= _g_thr:
-                        metar_reassess["wind_speed"] = 20.0
-                    else:
-                        metar_reassess["wind_speed"] = _cur_wspd_kt
-            else:
-                metar_reassess = metar_dict
-
-            _old_stdout = _sys.stdout
-            _sys.stdout = io.StringIO()
-            cand_regime, cand_tau, cand_reason = diagnose_regime(
-                {"hourly_profiles": remaining_profs}, metar_reassess, cfg)
-            _sys.stdout = _old_stdout
-
-            # ── Специални правила за изгрев/залез ──
-            # Изгрев → RADIATIVE → DYNAMIC (веднага, без изчакване)
-            if is_sunrise and current_regime == "radiative":
-                cand_regime = "dynamic"
-                cand_tau    = 7200
-                cand_reason = f"Изгрев (sin_el={sin_el:.2f}↑) → nudging T τ=2h"
-
-            # При изгрев не се връщаме към RADIATIVE
-            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunrise:
-                cand_regime = "dynamic"
-                cand_tau    = current_tau
-                cand_reason = "Изгрев продължава — задържаме DYNAMIC"
-
-            # Залез + тихо → DYNAMIC → RADIATIVE позволено
-            # (при залез вятърът е отслабнал и радиационното охлаждане доминира)
-            if current_regime == "dynamic" and cand_regime == "radiative" and is_sunset:
-                pass   # разрешаваме смяната — продължава към pending логиката
-
-            # ── Правило за 2 последователни часа ──
-            if cand_regime != current_regime:
-                if cand_regime == pending_regime:
-                    pending_count += 1
-                else:
-                    pending_regime = cand_regime
-                    pending_count  = 1
-
-                # Смяна при 2 последователни часа (или веднага при изгрев)
-                threshold = 1 if is_sunrise else 2
-                if pending_count >= threshold:
-                    print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "
-                          f"{current_regime.upper()} → {cand_regime.upper()} | {cand_reason}")
-                    current_regime = cand_regime
-                    current_tau    = cand_tau
-                    pending_regime = None
-                    pending_count  = 0
-            else:
-                # Режимът потвърден — нулираме pending
-                pending_regime = None
-                pending_count  = 0
+            hour_now = (float(hour0) + hour_elapsed) % 24
+            ra = reassess_regime(current_regime, current_tau,
+                                 pending_regime, pending_count,
+                                 hour_now, doy, hourly_profs, prof_idx,
+                                 metar_dict, cfg)
+            if ra["changed"]:
+                print(f"  [РЕЖИМ →] {hour_now:.0f}UTC: "
+                      f"{current_regime.upper()} → {ra['regime'].upper()} | {ra['reason']}")
+            current_regime = ra["regime"]
+            current_tau    = ra["tau"]
+            pending_regime = ra["pending_regime"]
+            pending_count  = ra["pending_count"]
 
         # ── Nudging с текущия режим ────────────────────────────────────
         if use_nudging and current_tau and hourly_profs:

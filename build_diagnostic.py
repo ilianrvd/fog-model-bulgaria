@@ -188,8 +188,11 @@ def build_record(res: dict, cases_dir: str, cache_dir: str) -> dict:
         prev = rl[i-1]
         curr = rl[i]
         if curr["regime"] != prev["regime"]:
-            is_sunrise = "зрев" in curr.get("reason", "") or \
-                         "nudging" in curr.get("reason", "").lower()
+            # Само изгревните причини („Изгрев …"). Старото условие
+            # хващаше и „nudging" — радиационната причина „…без nudging"
+            # го съдържа и даваше фалшиво sunrise=True в 20–23 UTC.
+            # Само етикет — не влияе на модела.
+            is_sunrise = "изгрев" in curr.get("reason", "").lower()
             changes.append({
                 "hour_utc": curr["hour_utc"],
                 "from":     prev["regime"],

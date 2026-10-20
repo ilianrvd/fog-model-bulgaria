@@ -29,6 +29,13 @@ jobs:
 
       - name: Run fog model
         timeout-minutes: 12
+        # Флаговете на еталона v26-env-near (CSI 0.4019). D2_SOIL е "0"
+        # по подразбиране в fog_model.py — без този ред оперативният
+        # модел върви с изключена почвена схема.
+        env:
+          D1_DOOR: "0"
+          D2_SOIL: "1"
+          D2_SOIL_MAX_KHR: "0.5"
         run: python run_operational.py
 
       - name: Commit and push results
