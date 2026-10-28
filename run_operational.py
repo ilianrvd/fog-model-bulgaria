@@ -224,6 +224,13 @@ def run_airport(icao, metar_raw, hours=12, dt=60, profile=None, now=None):
             regime_hourly.append(current_regime)
 
     run_airport.last_regime_log = regime_log   # за сухия тест
+    # За export_fog.py (машинният изход fog.json). Само препратка към
+    # вече изчисленото — нищо не се пресмята тук.
+    run_airport.last_run = {
+        "model"        : model,
+        "init"         : now.replace(minute=0, second=0, microsecond=0),
+        "regime_hourly": regime_hourly,
+    }
     return model.history, regime, reason, regime_hourly
 
 
@@ -251,6 +258,8 @@ def main():
     # Модел за всяко летище
     import time as _time_op
     results = {}
+    # Входове за export_fog.py — събират се успоредно, без да пипат results
+    fog_runs, fog_metar_dicts, fog_errors = {}, {}, {}
     for icao in ALL_AIRPORTS:
         print(f"\n--- {icao} ---")
         try:
@@ -306,9 +315,15 @@ def main():
                 "message"     : message,
             }
             print(f"  Мин.VIS={min_vis:.0f}m  {rating}  Режим={regime}")
+            try:
+                fog_runs[icao] = run_airport.last_run
+                fog_metar_dicts[icao] = parse_metar(metars[icao]) if metars.get(icao) else {}
+            except Exception as _e_fog:
+                fog_errors[icao] = f"export: {_e_fog}"
         except Exception as e:
             print(f"  ГРЕШКА: {e}")
             results[icao] = {"name": AIRPORT_COORDS[icao]["name"], "error": str(e)}
+            fog_errors[icao] = str(e)
 
 
     # Запис на JSON
@@ -337,6 +352,15 @@ def main():
     with open("docs/index.html", "w", encoding="utf-8") as f:
         f.write(html)
     print("[OK] docs/index.html записан")
+
+    # Машинен изход за airport-nowcast. Грешка тук не спира нищо.
+    try:
+        import export_fog
+        fog_payload = export_fog.build_payload(
+            fog_runs, metars, fog_metar_dicts, fog_errors, created=now_utc)
+        print(f"[OK] {export_fog.write_payload(fog_payload)} записан")
+    except Exception as e:
+        print(f"[ВНИМАНИЕ] fog.json не е записан: {e}")
 
 
 def build_html(payload):
