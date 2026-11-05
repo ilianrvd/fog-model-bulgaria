@@ -1,9 +1,389 @@
 {
- "created": "2026-11-05T18:15:56Z",
+ "created": "2026-11-05T18:26:35Z",
  "init": "2026-11-05T18:00:00Z",
  "icon_run": null,
- "model_version": "v26-env-near-106-ga4e0917",
+ "model_version": "v26-env-near-107-g850ca81",
  "airports": {
+  "LBSF": {
+   "init_metar": "METAR LBSF 051800Z AUTO 14005KT 9999 -SHRA BKN020/// BKN030/// OVC039/// 07/05 Q1027 NOSIG",
+   "hours": [
+    {
+     "valid": "2026-11-05T18:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 7.0,
+     "td2m": 5.0,
+     "cf": 0.96,
+     "cf_lo": 0.84,
+     "cf_mid": 0.96,
+     "cf_hi": 0.89
+    },
+    {
+     "valid": "2026-11-05T19:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 6.9,
+     "td2m": 4.3,
+     "cf": 0.79,
+     "cf_lo": 0.63,
+     "cf_mid": 0.6,
+     "cf_hi": 0.16
+    },
+    {
+     "valid": "2026-11-05T20:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 6.7,
+     "td2m": 4.2,
+     "cf": 0.44,
+     "cf_lo": 0.43,
+     "cf_mid": 0.03,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T21:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 6.1,
+     "td2m": 4.3,
+     "cf": 0.42,
+     "cf_lo": 0.42,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T22:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 5.2,
+     "td2m": 4.0,
+     "cf": 0.52,
+     "cf_lo": 0.52,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T23:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 4.1,
+     "td2m": 3.3,
+     "cf": 0.36,
+     "cf_lo": 0.36,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T00:00:00Z",
+     "vis_m": 929,
+     "lwp": 2.693e-05,
+     "fog_depth_m": 0.81,
+     "regime": "RADIATIVE",
+     "t2m": 2.9,
+     "td2m": 2.5,
+     "cf": 0.45,
+     "cf_lo": 0.45,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T01:00:00Z",
+     "vis_m": 648,
+     "lwp": 0.00019434,
+     "fog_depth_m": 4.43,
+     "regime": "RADIATIVE",
+     "t2m": 2.3,
+     "td2m": 2.2,
+     "cf": 0.64,
+     "cf_lo": 0.64,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T02:00:00Z",
+     "vis_m": 616,
+     "lwp": 0.00085776,
+     "fog_depth_m": 24.16,
+     "regime": "RADIATIVE",
+     "t2m": 1.9,
+     "td2m": 1.9,
+     "cf": 0.74,
+     "cf_lo": 0.74,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T03:00:00Z",
+     "vis_m": 600,
+     "lwp": 0.00317485,
+     "fog_depth_m": 50.0,
+     "regime": "RADIATIVE",
+     "t2m": 1.6,
+     "td2m": 1.5,
+     "cf": 0.85,
+     "cf_lo": 0.85,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T04:00:00Z",
+     "vis_m": 631,
+     "lwp": 0.01914279,
+     "fog_depth_m": 55.0,
+     "regime": "RADIATIVE",
+     "t2m": 1.2,
+     "td2m": 1.1,
+     "cf": 0.82,
+     "cf_lo": 0.82,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T05:00:00Z",
+     "vis_m": 905,
+     "lwp": 0.02851654,
+     "fog_depth_m": 55.0,
+     "regime": "RADIATIVE",
+     "t2m": 0.9,
+     "td2m": 0.9,
+     "cf": 0.84,
+     "cf_lo": 0.84,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T06:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.01555342,
+     "fog_depth_m": 55.0,
+     "regime": "DYNAMIC",
+     "t2m": 1.4,
+     "td2m": 1.3,
+     "cf": 0.89,
+     "cf_lo": 0.89,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    }
+   ],
+   "summary": {
+    "fog": true,
+    "onset": "2026-11-06T00:00:00Z",
+    "end": "2026-11-06T05:00:00Z",
+    "min_vis_m": 600,
+    "hours_lt1000": 6,
+    "hours_lt2000": 6
+   },
+   "flags": {
+    "cf_collapse": true,
+    "cf_high": false,
+    "borderline": false,
+    "saturated_start": false,
+    "precip": false,
+    "river_regime": null
+   }
+  },
+  "LBWN": {
+   "init_metar": "METAR LBWN 051800Z AUTO 27004KT 240V310 9999 NCD 04/M01 Q1028 NOSIG",
+   "hours": [
+    {
+     "valid": "2026-11-05T18:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 4.0,
+     "td2m": -1.0,
+     "cf": 0.23,
+     "cf_lo": 0.0,
+     "cf_mid": 0.3,
+     "cf_hi": 0.1
+    },
+    {
+     "valid": "2026-11-05T19:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "RADIATIVE",
+     "t2m": 3.6,
+     "td2m": -1.5,
+     "cf": 0.09,
+     "cf_lo": 0.02,
+     "cf_mid": 0.09,
+     "cf_hi": 0.02
+    },
+    {
+     "valid": "2026-11-05T20:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.7,
+     "td2m": -1.6,
+     "cf": 0.04,
+     "cf_lo": 0.04,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T21:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 3.0,
+     "td2m": -1.2,
+     "cf": 0.1,
+     "cf_lo": 0.1,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T22:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 3.0,
+     "td2m": -0.8,
+     "cf": 0.0,
+     "cf_lo": 0.0,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-05T23:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.8,
+     "td2m": -0.7,
+     "cf": 0.0,
+     "cf_lo": 0.0,
+     "cf_mid": 0.0,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T00:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.7,
+     "td2m": -0.7,
+     "cf": 0.38,
+     "cf_lo": 0.02,
+     "cf_mid": 0.52,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T01:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.7,
+     "td2m": -0.7,
+     "cf": 0.43,
+     "cf_lo": 0.0,
+     "cf_mid": 0.61,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T02:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.8,
+     "td2m": -0.6,
+     "cf": 0.49,
+     "cf_lo": 0.08,
+     "cf_mid": 0.63,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T03:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.9,
+     "td2m": -0.5,
+     "cf": 0.32,
+     "cf_lo": 0.09,
+     "cf_mid": 0.36,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T04:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.8,
+     "td2m": -0.6,
+     "cf": 0.31,
+     "cf_lo": 0.09,
+     "cf_mid": 0.34,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T05:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.7,
+     "td2m": -0.8,
+     "cf": 0.17,
+     "cf_lo": 0.08,
+     "cf_mid": 0.14,
+     "cf_hi": 0.0
+    },
+    {
+     "valid": "2026-11-06T06:00:00Z",
+     "vis_m": 10000,
+     "lwp": 0.0,
+     "fog_depth_m": 0.0,
+     "regime": "DYNAMIC",
+     "t2m": 2.9,
+     "td2m": -0.8,
+     "cf": 0.22,
+     "cf_lo": 0.0,
+     "cf_mid": 0.32,
+     "cf_hi": 0.0
+    }
+   ],
+   "summary": {
+    "fog": false,
+    "onset": null,
+    "end": null,
+    "min_vis_m": 10000,
+    "hours_lt1000": 0,
+    "hours_lt2000": 0
+   },
+   "flags": {
+    "cf_collapse": false,
+    "cf_high": false,
+    "borderline": false,
+    "saturated_start": false,
+    "precip": false,
+    "river_regime": null
+   }
+  },
   "LBBG": {
    "init_metar": "METAR LBBG 051800Z AUTO 34005KT 9999 NSC 03/M01 Q1028 NOSIG",
    "hours": [
@@ -573,14 +953,6 @@
     "precip": false,
     "river_regime": false
    }
-  },
-  "LBSF": {
-   "init_metar": "METAR LBSF 051800Z AUTO 14005KT 9999 -SHRA BKN020/// BKN030/// OVC039/// 07/05 Q1027 NOSIG",
-   "error": "The read operation timed out"
-  },
-  "LBWN": {
-   "init_metar": "METAR LBWN 051800Z AUTO 27004KT 240V310 9999 NCD 04/M01 Q1028 NOSIG",
-   "error": "The read operation timed out"
   }
  }
 }
