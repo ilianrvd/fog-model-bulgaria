@@ -136,7 +136,7 @@ def plot_forecast_clean(csv_paths, out_png="forecast_clean.png"):
         stations = " + ".join(d[0] for d in all_data)
         _, rows0, dts0 = all_data[0]
         period = f"{dts0[0].strftime('%d.%m.%Y %H:%M')} – {dts0[-1].strftime('%d.%m.%Y %H:%M')} UTC"
-        fig.suptitle(f"ДП РВД — 1D Модел мъгла  |  {stations}  |  {period}",
+        fig.suptitle(f"1D Модел мъгла  |  {stations}  |  {period}",
                      color='#7eb8e0', fontsize=11, fontweight='bold', y=0.98)
 
     plt.savefig(out_png, dpi=150, bbox_inches='tight',
