@@ -74,7 +74,7 @@ def fetch_metar_iem(icao: str, date_str: str,
     print(f"[IEM] {icao} @ {date_str}  →  {url[:70]}...")
 
     req = urllib.request.Request(url, headers={
-        "User-Agent" : "fog-model-dprvd/1.0 (aviation-met@bulatsa.bg)",
+        "User-Agent" : "fog-model/1.0 (ilianm@mail.bg)",
         "Accept"     : "application/json",
     })
 

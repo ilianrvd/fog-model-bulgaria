@@ -99,7 +99,7 @@ def fetch_icon_historical(icao: str, date_str: str, hour0: int,
     print(f"[ICON-EU HIST] URL: {url[:80]}...")
 
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0 (aviation-met@bulatsa.bg)"
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)"
     })
 
     try:
@@ -302,7 +302,7 @@ def fetch_metar_historical(icao_list: list, hours_back: int = 14) -> dict:
 
     print(f"\n[METAR HIST] Изтегляне за {ids_str} (последните {hours_back}h)...")
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0",
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)",
         "Accept"    : "application/json",
     })
 
