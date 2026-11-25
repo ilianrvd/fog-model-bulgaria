@@ -37,7 +37,7 @@ def fetch_metar(icao: str, hours: int = 2) -> str:
 
     print(f"[METAR] Изтегляне за {icao}...")
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0 (aviation-met@bulatsa.bg)",
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)",
         "Accept"    : "application/json",
     })
 
@@ -92,7 +92,7 @@ def fetch_all_airports(icao_list: list, hours: int = 2) -> dict:
 
     print(f"[METAR] Изтегляне за {ids_str}...")
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0",
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)",
         "Accept"    : "application/json",
     })
 

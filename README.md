@@ -1,4 +1,7 @@
 # fog-model-bulgaria
+
+Личен проект, не е официален продукт на сертифициран доставчик. Автор: Илиан Манафов, ilianm@mail.bg.
+
 1D fog forecast model for Bulgarian airports
 Експериментален модел!!! Не се контролира и верифицира. Да не се използва за прогноза.
 Използвани са свободно достъпни данни - ICON-EU OPEN METEO  и METAR (aviationweather.gov).

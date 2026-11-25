@@ -131,7 +131,7 @@ def fetch_icon_eu(icao: str, forecast_hours: int = 13) -> dict:
     print(f"[ICON-EU] URL: {url[:80]}...")
 
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0 (aviation-met@bulatsa.bg)"
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)"
     })
 
     import time as _time
@@ -423,7 +423,7 @@ def fetch_icon_eu_all(icao_list: list, forecast_hours: int = 13) -> dict:
     print(f"[ICON-EU ALL] URL: {url[:80]}...")
 
     req = urllib.request.Request(url, headers={
-        "User-Agent": "fog-model-dprvd/1.0"
+        "User-Agent": "fog-model/1.0 (ilianm@mail.bg)"
     })
 
     import time as _t

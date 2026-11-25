@@ -38,7 +38,7 @@ from output       import (save_surface_csv, save_profile_csv,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="1D Fog Model (PAFOG-type) за LBSF — ДП РВД"
+        description="1D Fog Model (PAFOG-type) за LBSF"
     )
     parser.add_argument('--wrf',    type=str,   default=None,
                         help='Път до WRF wrfout NetCDF файл')
@@ -67,7 +67,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     print("\n" + "═" * 65)
-    print("  ДП РВД — 1D МОДЕЛ ЗА МЪГЛА И ВИДИМОСТ (PAFOG-TYPE)")
+    print("  1D МОДЕЛ ЗА МЪГЛА И ВИДИМОСТ (PAFOG-TYPE)")
     print("  Летище София LBSF")
     print("═" * 65)
 

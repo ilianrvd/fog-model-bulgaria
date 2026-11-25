@@ -78,7 +78,7 @@ def fetch_metar_ogimet(icao: str, date_str: str,
     print(f"[OGIMET] URL: {url}")
 
     req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (compatible; fog-model-dprvd/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; fog-model/1.0; ilianm@mail.bg)",
         "Accept"    : "text/plain,text/html,*/*",
     })
 

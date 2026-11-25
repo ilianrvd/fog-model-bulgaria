@@ -204,7 +204,7 @@ def plot_forecast(history: list, out_png: str = "fog_forecast.png",
     ax4.set_ylabel('Височина AGL [m]')
     ax4.set_title('LWC профил (Hovmöller)')
 
-    plt.suptitle('ДП РВД — Едномерен модел за мъгла (PAFOG-type) LBSF',
+    plt.suptitle('Едномерен модел за мъгла (PAFOG-type) LBSF',
                  color='#7eb8e0', fontsize=13, fontweight='bold', y=1.01)
     plt.tight_layout()
     plt.savefig(out_png, dpi=150, bbox_inches='tight',

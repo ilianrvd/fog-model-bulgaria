@@ -262,7 +262,7 @@ def main():
         sys.exit(1)
 
     print(f"\n{'═'*60}")
-    print(f"  ДП РВД — 1D МОДЕЛ МЪГЛА  (ICON-EU + METAR)")
+    print(f"  1D МОДЕЛ МЪГЛА  (ICON-EU + METAR)")
     print(f"  Летища: {', '.join(airports)}")
     print(f"  Прогноза: {args.hours:.0f}h  |  dt={args.dt:.0f}s")
     print(f"{'═'*60}")
